@@ -1,28 +1,32 @@
 #include "../include/election_core.h"
 #include <iostream>
 
-// ==================== 文件管理模块实现 ====================
+// ==================== 文件管理模块实现（CSV格式） ====================
+
+// 简单辅助：去掉字符串首尾空白
+static std::string trim(const std::string &s) {
+    size_t start = s.find_first_not_of(" \t\r\n");
+    if (start == std::string::npos) return "";
+    size_t end = s.find_last_not_of(" \t\r\n");
+    return s.substr(start, end - start + 1);
+}
 
 bool FileManager::saveCandidates(const vector<Candidate> &candidates, 
-                                  const string &filename) {
-    ofstream file(filename, ios::binary);
+                                 const string &filename) {
+    ofstream file(filename);
     if (!file.is_open()) {
         return false;
     }
     
-    size_t count = candidates.size();
-    file.write(reinterpret_cast<const char*>(&count), sizeof(count));
+    // 表头
+    file << "id,name,department,voteCount\n";
     
     for (const auto &c : candidates) {
-        size_t nameLen = c.name.length();
-        size_t deptLen = c.department.length();
-        
-        file.write(reinterpret_cast<const char*>(&c.id), sizeof(c.id));
-        file.write(reinterpret_cast<const char*>(&nameLen), sizeof(nameLen));
-        file.write(c.name.c_str(), nameLen);
-        file.write(reinterpret_cast<const char*>(&deptLen), sizeof(deptLen));
-        file.write(c.department.c_str(), deptLen);
-        file.write(reinterpret_cast<const char*>(&c.voteCount), sizeof(c.voteCount));
+        // 简化处理：假定姓名和单位中不包含逗号
+        file << c.id << ','
+             << c.name << ','
+             << c.department << ','
+             << c.voteCount << '\n';
     }
     
     file.close();
@@ -31,27 +35,40 @@ bool FileManager::saveCandidates(const vector<Candidate> &candidates,
 
 bool FileManager::loadCandidates(vector<Candidate> &candidates, 
                                  const string &filename) {
-    ifstream file(filename, ios::binary);
+    ifstream file(filename);
     if (!file.is_open()) {
         return false;
     }
     
     candidates.clear();
-    size_t count;
-    file.read(reinterpret_cast<char*>(&count), sizeof(count));
+    std::string line;
     
-    for (size_t i = 0; i < count; i++) {
-        Candidate c;
-        size_t nameLen, deptLen;
+    // 读取表头（可选）
+    if (!std::getline(file, line)) {
+        return false;
+    }
+    
+    while (std::getline(file, line)) {
+        line = trim(line);
+        if (line.empty()) continue;
         
-        file.read(reinterpret_cast<char*>(&c.id), sizeof(c.id));
-        file.read(reinterpret_cast<char*>(&nameLen), sizeof(nameLen));
-        c.name.resize(nameLen);
-        file.read(&c.name[0], nameLen);
-        file.read(reinterpret_cast<char*>(&deptLen), sizeof(deptLen));
-        c.department.resize(deptLen);
-        file.read(&c.department[0], deptLen);
-        file.read(reinterpret_cast<char*>(&c.voteCount), sizeof(c.voteCount));
+        std::stringstream ss(line);
+        std::string idStr, name, dept, voteStr;
+        
+        if (!std::getline(ss, idStr, ',')) continue;
+        if (!std::getline(ss, name, ',')) continue;
+        if (!std::getline(ss, dept, ',')) continue;
+        if (!std::getline(ss, voteStr, ',')) continue;
+        
+        Candidate c;
+        try {
+            c.id = std::stoi(trim(idStr));
+            c.name = trim(name);
+            c.department = trim(dept);
+            c.voteCount = std::stoi(trim(voteStr));
+        } catch (...) {
+            continue; // 跳过格式错误的行
+        }
         
         candidates.push_back(c);
     }
@@ -67,11 +84,11 @@ bool FileManager::saveVotes(const vector<int> &votes,
         return false;
     }
     
-    for (size_t i = 0; i < votes.size(); i++) {
-        file << votes[i];
-        if (i < votes.size() - 1) file << " ";
+    // 表头
+    file << "vote\n";
+    for (int v : votes) {
+        file << v << '\n';
     }
-    file << endl;
     
     file.close();
     return true;
@@ -85,9 +102,24 @@ bool FileManager::loadVotes(vector<int> &votes,
     }
     
     votes.clear();
-    int vote;
-    while (file >> vote) {
-        votes.push_back(vote);
+    std::string line;
+    
+    // 读取表头（可选）
+    if (!std::getline(file, line)) {
+        return false;
+    }
+    
+    while (std::getline(file, line)) {
+        line = trim(line);
+        if (line.empty()) continue;
+        
+        try {
+            int v = std::stoi(line);
+            votes.push_back(v);
+        } catch (...) {
+            // 跳过非数字行（例如表头）
+            continue;
+        }
     }
     
     file.close();
@@ -211,19 +243,20 @@ bool ElectionSystem::deleteCandidate(int id) {
     return true;
 }
 
-void ElectionSystem::vote(const vector<int> &votes) {
-    // 重置所有候选人的得票数
-    for (auto &c : candidates) {
-        c.voteCount = 0;
-    }
-    
-    // 清空投票历史
-    voteHistory.clear();
+void ElectionSystem::vote(const vector<int> &votes, bool resetExisting) {
+    // 为了满足“除非主动清零，否则所有投票都累加”的需求，
+    // 这里不再根据 resetExisting 清空数据，真正的清零操作由 resetVotes()/clearAll() 控制。
+    (void)resetExisting; // 避免未使用参数告警
     
     // 获取有效ID列表
     vector<int> validIDs = getValidIDs();
     
-    // 统计投票
+    int invalidCount = DataValidator::validateVoteVector(votes, validIDs);
+    if (invalidCount > 0) {
+        cout << "⚠️  警告：发现 " << invalidCount << " 张无效选票！\n";
+    }
+    
+    // 统计投票（在现有基础上累加）
     for (int voteID : votes) {
         voteHistory.push_back(voteID);
         if (idToIndex.count(voteID)) {

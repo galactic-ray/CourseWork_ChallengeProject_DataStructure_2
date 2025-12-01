@@ -16,41 +16,52 @@ set(CMAKE_AUTORCC ON)
 # 包含目录
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-# 源文件
-set(SOURCES
+# GUI 源文件
+set(GUI_SOURCES
     src/gui_main.cpp
     src/gui_mainwindow.cpp
     src/election_core.cpp
 )
 
-set(HEADERS
+set(GUI_HEADERS
     include/gui_mainwindow.h
     include/election_core.h
 )
 
-# 创建GUI可执行文件
-add_executable(election_gui ${SOURCES} ${HEADERS})
+# 创建 GUI 可执行文件
+add_executable(election_gui ${GUI_SOURCES} ${GUI_HEADERS})
 
-# 链接Qt5库
+# 链接 Qt5 库
 target_link_libraries(election_gui 
     Qt5::Core 
     Qt5::Widgets
 )
 
-# 设置输出目录
+# 设置 GUI 输出目录
 set_target_properties(election_gui PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 
-# 编译选项
+# GUI 编译选项
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     target_compile_options(election_gui PRIVATE -O2)
 else()
     target_compile_options(election_gui PRIVATE -g -Wall -Wextra)
 endif()
 
-# 安装规则（可选）
-install(TARGETS election_gui
-    RUNTIME DESTINATION bin
+# 控制台版本（终端界面）
+add_executable(election_console
+    src/main.cpp
+    src/election_core.cpp
 )
+
+set_target_properties(election_console PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    target_compile_options(election_console PRIVATE -O2)
+else()
+    target_compile_options(election_console PRIVATE -g -Wall -Wextra)
+endif()
 

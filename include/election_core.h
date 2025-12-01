@@ -118,8 +118,9 @@ public:
      * @param filename 文件名
      * @return true表示成功，false表示失败
      */
+    // 使用CSV格式保存候选人数据: id,name,department,voteCount
     static bool saveCandidates(const vector<Candidate> &candidates, 
-                              const string &filename = "candidates.dat");
+                              const string &filename = "candidates.csv");
     
     /**
      * 从文件加载候选人数据
@@ -127,8 +128,9 @@ public:
      * @param filename 文件名
      * @return true表示成功，false表示失败
      */
+    // 使用CSV格式加载候选人数据: id,name,department,voteCount
     static bool loadCandidates(vector<Candidate> &candidates, 
-                              const string &filename = "candidates.dat");
+                              const string &filename = "candidates.csv");
     
     /**
      * 保存投票向量到文件
@@ -136,8 +138,9 @@ public:
      * @param filename 文件名
      * @return true表示成功，false表示失败
      */
+    // 使用CSV格式保存投票数据: 每行一个voteID
     static bool saveVotes(const vector<int> &votes, 
-                          const string &filename = "votes.dat");
+                          const string &filename = "votes.csv");
     
     /**
      * 从文件加载投票向量
@@ -145,8 +148,9 @@ public:
      * @param filename 文件名
      * @return true表示成功，false表示失败
      */
+    // 使用CSV格式加载投票数据: 支持首行表头
     static bool loadVotes(vector<int> &votes, 
-                          const string &filename = "votes.dat");
+                          const string &filename = "votes.csv");
     
     /**
      * 导出统计报告到文本文件
@@ -357,7 +361,7 @@ public:
      * 空间复杂度：O(m)
      * @param votes 选举向量v，长度为m，每个元素是候选人ID
      */
-    void vote(const vector<int> &votes);
+    void vote(const vector<int> &votes, bool resetExisting = true);
     
     /**
      * 单票投票

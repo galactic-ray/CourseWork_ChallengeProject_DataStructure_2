@@ -21,7 +21,6 @@ MainWindow::MainWindow(QWidget *parent)
     resize(1200, 800);
     
     createMenus();
-    createToolBars();
     createStatusBar();
     createCentralWidget();
     
@@ -342,13 +341,15 @@ void MainWindow::createDataMaintenanceWidget()
     loadCandidatesBtn = new QPushButton("加载候选人数据");
     saveVotesBtn = new QPushButton("保存投票数据");
     loadVotesBtn = new QPushButton("加载投票数据");
+    loadSampleCandidatesBtn = new QPushButton("加载示例候选人");
     clearAllBtn = new QPushButton("清空所有数据");
     
     gridLayout->addWidget(saveCandidatesBtn, 0, 0);
     gridLayout->addWidget(loadCandidatesBtn, 0, 1);
     gridLayout->addWidget(saveVotesBtn, 1, 0);
     gridLayout->addWidget(loadVotesBtn, 1, 1);
-    gridLayout->addWidget(clearAllBtn, 2, 0, 1, 2);
+    gridLayout->addWidget(loadSampleCandidatesBtn, 2, 0, 1, 2);
+    gridLayout->addWidget(clearAllBtn, 3, 0, 1, 2);
     
     QGroupBox *logGroup = new QGroupBox("操作日志");
     QVBoxLayout *logLayout = new QVBoxLayout(logGroup);
@@ -365,6 +366,7 @@ void MainWindow::createDataMaintenanceWidget()
     connect(loadCandidatesBtn, &QPushButton::clicked, this, &MainWindow::onLoadCandidates);
     connect(saveVotesBtn, &QPushButton::clicked, this, &MainWindow::onSaveVotes);
     connect(loadVotesBtn, &QPushButton::clicked, this, &MainWindow::onLoadVotes);
+    connect(loadSampleCandidatesBtn, &QPushButton::clicked, this, &MainWindow::onLoadSampleCandidates);
     connect(clearAllBtn, &QPushButton::clicked, this, &MainWindow::onClearAll);
     
     mainTabWidget->addTab(maintenanceWidget, "数据维护");
@@ -382,9 +384,11 @@ void MainWindow::createAdvancedFeaturesWidget()
     analyzeVoteDataBtn = new QPushButton("投票数据分析");
     analyzeRankingBtn = new QPushButton("排名分析");
     analyzeDistributionBtn = new QPushButton("得票分布分析");
+    analyzePerformanceBtn = new QPushButton("性能测试");
     buttonLayout->addWidget(analyzeVoteDataBtn);
     buttonLayout->addWidget(analyzeRankingBtn);
     buttonLayout->addWidget(analyzeDistributionBtn);
+    buttonLayout->addWidget(analyzePerformanceBtn);
     buttonLayout->addStretch();
     analysisLayout->addLayout(buttonLayout);
     
@@ -397,6 +401,7 @@ void MainWindow::createAdvancedFeaturesWidget()
     connect(analyzeVoteDataBtn, &QPushButton::clicked, this, &MainWindow::onAnalyzeVoteData);
     connect(analyzeRankingBtn, &QPushButton::clicked, this, &MainWindow::onAnalyzeRanking);
     connect(analyzeDistributionBtn, &QPushButton::clicked, this, &MainWindow::onAnalyzeDistribution);
+    connect(analyzePerformanceBtn, &QPushButton::clicked, this, &MainWindow::onAnalyzePerformance);
     
     mainTabWidget->addTab(advancedWidget, "高级功能");
 }
@@ -556,6 +561,8 @@ void MainWindow::onSingleVote()
         updateCandidateTable();
         updateStatisticsTable();
         updateVoteHistoryList();
+        onShowSummary();
+        onShowElectionResult();
         statusLabel->setText(QString("已投票给候选人: %1").arg(candidateID));
     } else {
         showMessage("错误", "投票失败！候选人不存在。", true);
@@ -586,7 +593,7 @@ void MainWindow::onBatchVote()
         return;
     }
     
-    electionSystem->vote(votes);
+    electionSystem->vote(votes, false);
     
     int totalVotes = votes.size();
     const vector<Candidate> &candidates = electionSystem->getAllCandidates();
@@ -606,6 +613,8 @@ void MainWindow::onBatchVote()
     updateCandidateTable();
     updateStatisticsTable();
     updateVoteHistoryList();
+    onShowSummary();
+    onShowElectionResult();
     statusLabel->setText(QString("已处理 %1 张选票").arg(totalVotes));
 }
 
@@ -619,11 +628,14 @@ void MainWindow::onImportVotesFromFile()
     
     vector<int> votes;
     if (FileManager::loadVotes(votes, filename.toStdString())) {
-        electionSystem->vote(votes);
+        // 从文件导入视为一次批量投票，在当前票数基础上累加
+        electionSystem->vote(votes, false);
         showMessage("成功", QString("成功从文件加载 %1 张选票").arg(votes.size()));
         updateCandidateTable();
         updateStatisticsTable();
         updateVoteHistoryList();
+        onShowSummary();
+        onShowElectionResult();
         statusLabel->setText(QString("已从文件加载 %1 张选票").arg(votes.size()));
     } else {
         showMessage("错误", "文件加载失败！", true);
@@ -642,6 +654,8 @@ void MainWindow::onResetVotes()
         updateCandidateTable();
         updateStatisticsTable();
         updateVoteHistoryList();
+        onShowSummary();
+        onShowElectionResult();
         statusLabel->setText("已重置所有投票");
     }
 }
@@ -795,8 +809,8 @@ void MainWindow::onExportReport()
 void MainWindow::onSaveCandidates()
 {
     QString filename = QFileDialog::getSaveFileName(this, "保存候选人数据", 
-                                                    "candidates.dat", 
-                                                    "数据文件 (*.dat);;所有文件 (*.*)");
+                                                    "candidates.csv", 
+                                                    "CSV 文件 (*.csv);;所有文件 (*.*)");
     if (filename.isEmpty()) {
         return;
     }
@@ -815,7 +829,7 @@ void MainWindow::onSaveCandidates()
 void MainWindow::onLoadCandidates()
 {
     QString filename = QFileDialog::getOpenFileName(this, "加载候选人数据", 
-                                                    ".", "数据文件 (*.dat);;所有文件 (*.*)");
+                                                    ".", "CSV 文件 (*.csv);;所有文件 (*.*)");
     if (filename.isEmpty()) {
         return;
     }
@@ -840,6 +854,8 @@ void MainWindow::onLoadCandidates()
                                .arg(candidates.size()));
         updateCandidateTable();
         updateStatisticsTable();
+        onShowSummary();
+        onShowElectionResult();
         statusLabel->setText(QString("已加载 %1 个候选人").arg(candidates.size()));
     } else {
         showMessage("错误", "加载失败！", true);
@@ -849,8 +865,8 @@ void MainWindow::onLoadCandidates()
 void MainWindow::onSaveVotes()
 {
     QString filename = QFileDialog::getSaveFileName(this, "保存投票数据", 
-                                                    "votes.dat", 
-                                                    "数据文件 (*.dat *.txt);;所有文件 (*.*)");
+                                                    "votes.csv", 
+                                                    "CSV 文件 (*.csv);;所有文件 (*.*)");
     if (filename.isEmpty()) {
         return;
     }
@@ -869,14 +885,17 @@ void MainWindow::onSaveVotes()
 void MainWindow::onLoadVotes()
 {
     QString filename = QFileDialog::getOpenFileName(this, "加载投票数据", 
-                                                    ".", "数据文件 (*.dat *.txt);;所有文件 (*.*)");
+                                                    ".", "CSV 文件 (*.csv);;所有文件 (*.*)");
     if (filename.isEmpty()) {
         return;
     }
     
     vector<int> votes;
     if (FileManager::loadVotes(votes, filename.toStdString())) {
-        electionSystem->vote(votes);
+        // 数据维护中的“加载投票数据”用于从文件重建一次完整投票结果，
+        // 因此这里先主动清零，再重新累加。
+        electionSystem->resetVotes();
+        electionSystem->vote(votes, true);
         showMessage("成功", QString("成功加载 %1 张选票").arg(votes.size()));
         maintenanceLog->append(QString("[%1] 加载投票数据: %2 (%3张选票)")
                                .arg(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss"))
@@ -885,6 +904,8 @@ void MainWindow::onLoadVotes()
         updateCandidateTable();
         updateStatisticsTable();
         updateVoteHistoryList();
+        onShowSummary();
+        onShowElectionResult();
         statusLabel->setText(QString("已加载 %1 张选票").arg(votes.size()));
     } else {
         showMessage("错误", "加载失败！", true);
@@ -905,6 +926,8 @@ void MainWindow::onClearAll()
         updateCandidateTable();
         updateStatisticsTable();
         updateVoteHistoryList();
+        onShowSummary();
+        onShowElectionResult();
         statusLabel->setText("已清空所有数据");
     }
 }
@@ -1007,6 +1030,74 @@ void MainWindow::onAnalyzeDistribution()
     analysisText->setPlainText(analysis);
 }
 
+void MainWindow::onAnalyzePerformance()
+{
+    // 简单性能测试：在不同规模下测量核心操作的耗时
+    struct CaseConfig {
+        int candidates;
+        int votes;
+    };
+    
+    const CaseConfig cases[] = {
+        {10,     100},
+        {100,    10'000},
+        {1'000,  100'000}
+    };
+    
+    QString report;
+    report += "性能测试（理论 + 实测）\n";
+    report += "═══════════════════════════════════════\n\n";
+    
+    for (const auto &cfg : cases) {
+        ElectionSystem perfSystem;
+        
+        // 构造候选人
+        for (int i = 1; i <= cfg.candidates; ++i) {
+            perfSystem.addCandidate(i, "候选人" + std::to_string(i), "测试组");
+        }
+        
+        // 构造投票向量（均匀分布）
+        std::vector<int> votes;
+        votes.reserve(cfg.votes);
+        for (int i = 0; i < cfg.votes; ++i) {
+            int id = (i % cfg.candidates) + 1;
+            votes.push_back(id);
+        }
+        
+        QElapsedTimer timer;
+        qint64 tAdd = 0;
+        qint64 tVote = 0;
+        qint64 tFind = 0;
+        
+        // 测试批量投票
+        timer.start();
+        perfSystem.vote(votes, true);
+        tVote = timer.elapsed();
+        
+        // 测试查找优胜者
+        timer.restart();
+        int winner = perfSystem.findWinner();
+        (void)winner;
+        tFind = timer.elapsed();
+        
+        report += QString("场景：%1 个候选人，%2 张选票\n")
+                  .arg(cfg.candidates)
+                  .arg(cfg.votes);
+        report += QString("  批量投票耗时：%1 ms （理论 O(m)）\n")
+                  .arg(tVote);
+        report += QString("  查找优胜者耗时：%1 ms （理论 O(n)）\n\n")
+                  .arg(tFind);
+    }
+    
+    report += "复杂度总结：\n";
+    report += "  添加候选人：O(1) 平均\n";
+    report += "  批量投票：O(m)，m 为选票数量\n";
+    report += "  查找优胜者：O(n)，n 为候选人数\n";
+    report += "  排序：O(n log n)\n";
+    
+    analysisText->setPlainText(report);
+}
+
 // ==================== 辅助函数 ====================
 
 void MainWindow::updateCandidateTable()
@@ -1103,5 +1194,47 @@ void MainWindow::clearInputFields()
     candidateIdEdit->clear();
     candidateNameEdit->clear();
     candidateDeptEdit->clear();
+}
+
+void MainWindow::onLoadSampleCandidates()
+{
+    struct SampleCandidate {
+        int id;
+        const char *name;
+        const char *dept;
+    };
+    
+    const SampleCandidate samples[] = {
+        {1,  "张三",   "计算机学院"},
+        {2,  "李四",   "计算机学院"},
+        {3,  "王五",   "数学学院"},
+        {4,  "赵六",   "数学学院"},
+        {5,  "孙琪",   "物理学院"},
+        {6,  "周八",   "物理学院"},
+        {7,  "吴九",   "经管学院"},
+        {8,  "郑十",   "经管学院"},
+        {9,  "陈一",   "外国语学院"},
+        {10, "杨二",   "外国语学院"}
+    };
+    
+    // 清空现有候选人和投票数据
+    electionSystem->clearAll();
+    
+    // 导入示例候选人
+    for (const auto &s : samples) {
+        electionSystem->addCandidate(s.id, s.name, s.dept);
+    }
+    
+    showMessage("成功", "已加载示例候选人名单（10人）。");
+    if (maintenanceLog) {
+        maintenanceLog->append(QString("[%1] 加载示例候选人名单（10人）")
+                               .arg(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss")));
+    }
+    
+    updateCandidateTable();
+    updateStatisticsTable();
+    onShowSummary();
+    onShowElectionResult();
+    statusLabel->setText("已加载示例候选人名单");
 }
 

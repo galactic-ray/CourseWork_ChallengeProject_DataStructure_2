@@ -944,7 +944,7 @@ public:
         cin.ignore(numeric_limits<streamsize>::max(), '\n');
         
         if (!votes.empty()) {
-            system->vote(votes);
+            system->vote(votes, false); // 批量投票：在原有票数基础上累加
         } else {
             cout << "❌ 投票向量为空！\n";
         }
@@ -956,13 +956,13 @@ public:
      */
     void importVotesFromFileUI() {
         printTitle("从文件导入投票");
-        string filename = inputString("请输入文件名（默认: votes.dat）: ");
-        if (filename.empty()) filename = "votes.dat";
+        string filename = inputString("请输入文件名（默认: votes.csv）: ");
+        if (filename.empty()) filename = "votes.csv";
         
         vector<int> votes;
         if (FileManager::loadVotes(votes, filename)) {
             cout << "✅ 成功从文件加载 " << votes.size() << " 张选票。\n";
-            system->vote(votes);
+            system->vote(votes, false); // 从文件导入视为一次批量累加投票
         } else {
             cout << "❌ 文件加载失败！\n";
         }
@@ -1245,7 +1245,8 @@ public:
                 case 4: {
                     vector<int> votes;
                     if (FileManager::loadVotes(votes)) {
-                        system->vote(votes);
+                        system->resetVotes();      // 数据维护中的“加载投票数据”先清零
+                        system->vote(votes, true); // 再重建
                         cout << "✅ 投票数据加载成功！\n";
                     } else {
                         cout << "❌ 加载失败！\n";
@@ -1445,7 +1446,7 @@ void runTestCases() {
     system.addCandidate(3, "王五", "物理学院");
     
     vector<int> votes1 = {1, 2, 1, 3, 1, 1, 1, 2, 1, 1}; // 1号得7票，超过半数
-    system.vote(votes1);
+    system.vote(votes1, true);
     
     int winner1 = system.findWinner();
     cout << "投票向量: ";
@@ -1460,7 +1461,7 @@ void runTestCases() {
     cout << "───────────────────────────────────────────────────────────\n";
     system.resetVotes();
     vector<int> votes2 = {1, 2, 3, 1, 2, 3}; // 每人2票，没有超过半数
-    system.vote(votes2);
+    system.vote(votes2, true);
     
     int winner2 = system.findWinner();
     cout << "投票向量: ";
@@ -1486,7 +1487,7 @@ void runTestCases() {
     cout << "───────────────────────────────────────────────────────────\n";
     system.resetVotes();
     vector<int> votes4 = {1, 2, 99, 1, 3, 88, 1}; // 包含无效ID
-    system.vote(votes4);
+    system.vote(votes4, true);
     cout << "投票向量包含无效ID: 99, 88\n";
     cout << "系统应能识别并忽略无效投票\n";
     cout << "\n";

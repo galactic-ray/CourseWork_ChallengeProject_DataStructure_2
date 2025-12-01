@@ -56,9 +56,9 @@
 
 ### 文件管理
 
-- 二进制格式保存候选人数据（高效）
-- 文本格式保存投票向量（易读）
-- 导出格式化的统计报告
+- 使用CSV格式保存候选人数据（`candidates.csv`）
+- 使用CSV格式保存投票向量（`votes.csv`）
+- 导出格式化的统计报告（`election_report.txt`）
 
 ## 技术特点
 
@@ -87,76 +87,54 @@
 
 ## 编译和运行
 
-本项目提供两个版本：
+本项目提供两个版本（均通过 **CMake** 统一编译）：
 1. **控制台版本** - 基于文本的交互式界面
 2. **GUI版本** - 基于Qt的图形用户界面（推荐）
 
-### 控制台版本
+### 环境要求
 
-#### 编译
+- C++11 或更高版本的编译器（g++ / clang++ 等）
+- CMake ≥ 3.10
+- Qt5 开发库（Qt5.7 或更高版本，仅 GUI 版本需要）
+
+Ubuntu/Debian 安装 Qt5 示例：
 
 ```bash
-# 使用Makefile（推荐）
-make console
-
-# 或手动编译
-g++ -std=c++11 -Iinclude -o election_console src/main.cpp src/election_core.cpp
+sudo apt-get update
+sudo apt-get install qtbase5-dev
 ```
 
-#### 运行
+### 使用 CMake 编译（同时生成控制台版和 GUI 版）
 
 ```bash
-./election_console
+cd code2
+mkdir -p build
+cd build
+cmake ..
+make
+```
+
+编译完成后，`build/bin/` 下会生成两个可执行文件：
+
+- 控制台版本：`build/bin/election_console`
+- GUI 版本：`build/bin/election_gui`
+
+### 运行控制台版本
+
+```bash
+cd code2/build
+./bin/election_console
 ```
 
 运行后可以选择：
 - **模式1**：交互式界面（推荐）
 - **模式2**：运行测试用例
 
-### GUI版本（推荐）
-
-#### 系统要求
-
-- Qt5 开发库（Qt5.7或更高版本）
-- C++11或更高版本的编译器
-
-#### 安装Qt5（Ubuntu/Debian）
+### 运行GUI版本
 
 ```bash
-sudo apt-get update
-sudo apt-get install qt5-default
-# 或
-sudo apt-get install qtbase5-dev qt5-qmake
-```
-
-#### 编译方法1：使用qmake（推荐）
-
-```bash
-qmake election_gui.pro
-make
-```
-
-#### 编译方法2：使用CMake
-
-```bash
-mkdir build
-cd build
-cmake ..
-make
-```
-
-#### 编译方法3：使用Makefile
-
-```bash
-make gui
-```
-
-#### 运行GUI版本
-
-```bash
-./election_gui
-# 或（如果使用CMake）
-./build/bin/election_gui
+cd code2/build
+./bin/election_gui
 ```
 
 #### GUI版本特性
@@ -181,14 +159,24 @@ make gui
    - 输入投票向量：`1 2 1 3 1 1 1 2 1 1 -1`
 4. 进入"选举结果"查看优胜者
 
-### 示例2：从文件导入
+### 示例2：从文件导入（CSV）
 
-1. 创建投票文件 `votes.dat`，内容为：
-   ```
-   1 2 1 3 1 1 1 2 1 1
+1. 创建投票文件 `votes.csv`，内容为：
+   ```csv
+   vote
+   1
+   2
+   1
+   3
+   1
+   1
+   1
+   2
+   1
+   1
    ```
 2. 在程序中进入"投票管理" → "从文件导入投票"
-3. 输入文件名：`votes.dat`
+3. 选择文件：`votes.csv`
 
 ### 示例3：导出报告
 
@@ -212,7 +200,7 @@ make gui
 
 ## 性能分析
 
-详见 `PERFORMANCE_ANALYSIS.md` 文件。
+> GUI 中“高级功能 → 性能测试”提供了不同规模下的实测性能，这里给出理论复杂度总结。
 
 ### 时间复杂度总结
 
@@ -249,14 +237,13 @@ code2/
 │   ├── election_core.h   # 核心选举系统头文件
 │   └── gui_mainwindow.h  # GUI主窗口头文件
 ├── src/                  # 源文件目录
-│   ├── election_core.cpp  # 核心选举系统实现
+│   ├── election_core.cpp # 核心选举系统实现
 │   ├── main.cpp          # 控制台版本主程序
 │   ├── gui_main.cpp      # GUI版本主程序
 │   └── gui_mainwindow.cpp # GUI主窗口实现
-├── election_gui.pro      # Qt项目文件
-├── CMakeLists.txt        # CMake项目文件
-├── Makefile              # 通用Makefile
-└── ...                   # 其他文档文件
+├── CMakeLists.txt        # CMake项目文件（同时生成控制台和GUI版本）
+├── README.md             # 本文件，项目说明与性能分析
+└── .gitignore            # Git 忽略规则
 ```
 
 ### 核心文件
@@ -265,19 +252,9 @@ code2/
 - `src/gui_main.cpp` - GUI版本主程序
 - `include/gui_mainwindow.h` / `src/gui_mainwindow.cpp` - GUI主窗口实现
 
-### 项目配置文件
-- `election_gui.pro` - Qt项目文件（qmake）
-- `CMakeLists.txt` - CMake项目文件
-- `Makefile` - 通用Makefile（支持控制台和GUI版本）
-
-### 文档文件
-- `README.md` - 本文件，项目说明文档
-- `PERFORMANCE_ANALYSIS.md` - 性能分析报告
-- `CODE_REVIEW.md` - 代码审查报告
-
-### 数据文件（运行时生成）
-- `candidates.dat` - 候选人数据文件
-- `votes.dat` - 投票数据文件
+### 运行时数据文件（示例）
+- `candidates.csv` - 候选人数据文件（CSV）
+- `votes.csv` - 投票数据文件（CSV）
 - `election_report.txt` - 统计报告文件
 
 ## 系统要求

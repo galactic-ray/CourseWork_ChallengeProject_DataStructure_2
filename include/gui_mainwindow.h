@@ -22,7 +22,6 @@
 #include <QHeaderView>
 #include <QGroupBox>
 #include <QComboBox>
-#include <QProgressBar>
 #include <QTabWidget>
 #include <QSplitter>
 #include <QListWidget>
@@ -91,11 +90,13 @@ private slots:
     void onSaveVotes();
     void onLoadVotes();
     void onClearAll();
+    void onLoadSampleCandidates();
     
     // 高级功能
     void onAnalyzeVoteData();
     void onAnalyzeRanking();
     void onAnalyzeDistribution();
+    void onAnalyzePerformance();
     
     // 表格选择变化
     void onCandidateTableSelectionChanged();
@@ -174,6 +175,7 @@ private:
     QPushButton *saveVotesBtn;
     QPushButton *loadVotesBtn;
     QPushButton *clearAllBtn;
+    QPushButton *loadSampleCandidatesBtn;
     QTextBrowser *maintenanceLog;
     
     // 高级功能界面
@@ -182,6 +184,7 @@ private:
     QPushButton *analyzeVoteDataBtn;
     QPushButton *analyzeRankingBtn;
     QPushButton *analyzeDistributionBtn;
+    QPushButton *analyzePerformanceBtn;
     
     // 菜单和工具栏
     QMenu *fileMenu;
