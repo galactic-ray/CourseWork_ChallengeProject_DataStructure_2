@@ -37,29 +37,14 @@ void MainWindow::createMenus()
 {
     fileMenu = menuBar()->addMenu("文件(&F)");
     
-    QAction *saveCandidatesAction = fileMenu->addAction("保存候选人数据(&S)");
-    saveCandidatesAction->setShortcut(QKeySequence::Save);
-    connect(saveCandidatesAction, &QAction::triggered, this, &MainWindow::onSaveCandidates);
-    
-    QAction *loadCandidatesAction = fileMenu->addAction("加载候选人数据(&L)");
-    loadCandidatesAction->setShortcut(QKeySequence::Open);
-    connect(loadCandidatesAction, &QAction::triggered, this, &MainWindow::onLoadCandidates);
-    
-    fileMenu->addSeparator();
-    
-    QAction *exportReportAction = fileMenu->addAction("导出统计报告(&E)");
-    connect(exportReportAction, &QAction::triggered, this, &MainWindow::onExportReport);
-    
-    fileMenu->addSeparator();
-    
     QAction *exitAction = fileMenu->addAction("退出(&X)");
     exitAction->setShortcut(QKeySequence::Quit);
     connect(exitAction, &QAction::triggered, this, &QWidget::close);
     
     editMenu = menuBar()->addMenu("编辑(&E)");
     
-    QAction *clearAllAction = editMenu->addAction("清空所有数据(&C)");
-    connect(clearAllAction, &QAction::triggered, this, &MainWindow::onClearAll);
+    // 当前版本中，数据维护相关操作集中在“数据维护”标签页中，
+    // 这里不再重复提供菜单入口，以简化界面。
     
     viewMenu = menuBar()->addMenu("视图(&V)");
     
@@ -622,7 +607,7 @@ void MainWindow::onBatchVote()
 void MainWindow::onImportVotesFromFile()
 {
     QString filename = QFileDialog::getOpenFileName(this, "选择投票文件", 
-                                                    ".", "数据文件 (*.dat *.txt);;所有文件 (*.*)");
+                                                    ".", "数据文件 (*.csv *.dat *.txt);;所有文件 (*.*)");
     if (filename.isEmpty()) {
         return;
     }
@@ -811,7 +796,7 @@ void MainWindow::onSaveCandidates()
 {
     QString filename = QFileDialog::getSaveFileName(this, "保存候选人数据", 
                                                     "candidates.csv", 
-                                                    "CSV 文件 (*.csv);;所有文件 (*.*)");
+                                                    "数据文件 (*.csv *.txt);;CSV 文件 (*.csv);;文本文件 (*.txt);;所有文件 (*.*)");
     if (filename.isEmpty()) {
         return;
     }
@@ -830,7 +815,7 @@ void MainWindow::onSaveCandidates()
 void MainWindow::onLoadCandidates()
 {
     QString filename = QFileDialog::getOpenFileName(this, "加载候选人数据", 
-                                                    ".", "CSV 文件 (*.csv);;所有文件 (*.*)");
+                                                    ".", "数据文件 (*.csv *.txt);;CSV 文件 (*.csv);;文本文件 (*.txt);;所有文件 (*.*)");
     if (filename.isEmpty()) {
         return;
     }
@@ -867,7 +852,7 @@ void MainWindow::onSaveVotes()
 {
     QString filename = QFileDialog::getSaveFileName(this, "保存投票数据", 
                                                     "votes.csv", 
-                                                    "CSV 文件 (*.csv);;所有文件 (*.*)");
+                                                    "数据文件 (*.csv *.txt);;CSV 文件 (*.csv);;文本文件 (*.txt);;所有文件 (*.*)");
     if (filename.isEmpty()) {
         return;
     }
@@ -886,7 +871,7 @@ void MainWindow::onSaveVotes()
 void MainWindow::onLoadVotes()
 {
     QString filename = QFileDialog::getOpenFileName(this, "加载投票数据", 
-                                                    ".", "CSV 文件 (*.csv);;所有文件 (*.*)");
+                                                    ".", "数据文件 (*.csv *.txt);;CSV 文件 (*.csv);;文本文件 (*.txt);;所有文件 (*.*)");
     if (filename.isEmpty()) {
         return;
     }

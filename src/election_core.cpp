@@ -1,7 +1,16 @@
 #include "../include/election_core.h"
 #include <iostream>
 
-// ==================== 文件管理模块实现（CSV格式） ====================
+// ==================== 文件管理模块实现（CSV / 文本格式） ====================
+
+// 简单辅助：获取文件扩展名（小写）
+static std::string getFileExtensionLower(const std::string &filename) {
+    auto pos = filename.find_last_of('.');
+    if (pos == std::string::npos) return "";
+    std::string ext = filename.substr(pos + 1);
+    for (auto &ch : ext) ch = static_cast<char>(tolower(static_cast<unsigned char>(ch)));
+    return ext;
+}
 
 // 简单辅助：去掉字符串首尾空白
 static std::string trim(const std::string &s) {
@@ -17,16 +26,27 @@ bool FileManager::saveCandidates(const vector<Candidate> &candidates,
     if (!file.is_open()) {
         return false;
     }
+    std::string ext = getFileExtensionLower(filename);
     
-    // 表头
-    file << "id,name,department,voteCount\n";
-    
-    for (const auto &c : candidates) {
-        // 简化处理：假定姓名和单位中不包含逗号
-        file << c.id << ','
-             << c.name << ','
-             << c.department << ','
-             << c.voteCount << '\n';
+    if (ext == "txt") {
+        // 文本格式：简单空白分隔，便于人工查看与编辑
+        file << "id name department voteCount\n";
+        for (const auto &c : candidates) {
+            file << c.id << ' '
+                 << c.name << ' '
+                 << c.department << ' '
+                 << c.voteCount << '\n';
+        }
+    } else {
+        // 默认CSV格式: id,name,department,voteCount
+        file << "id,name,department,voteCount\n";
+        for (const auto &c : candidates) {
+            // 简化处理：假定姓名和单位中不包含逗号
+            file << c.id << ','
+                 << c.name << ','
+                 << c.department << ','
+                 << c.voteCount << '\n';
+        }
     }
     
     file.close();
@@ -42,35 +62,72 @@ bool FileManager::loadCandidates(vector<Candidate> &candidates,
     
     candidates.clear();
     std::string line;
+    std::string ext = getFileExtensionLower(filename);
     
-    // 读取表头（可选）
-    if (!std::getline(file, line)) {
-        return false;
-    }
-    
-    while (std::getline(file, line)) {
-        line = trim(line);
-        if (line.empty()) continue;
-        
-        std::stringstream ss(line);
-        std::string idStr, name, dept, voteStr;
-        
-        if (!std::getline(ss, idStr, ',')) continue;
-        if (!std::getline(ss, name, ',')) continue;
-        if (!std::getline(ss, dept, ',')) continue;
-        if (!std::getline(ss, voteStr, ',')) continue;
-        
-        Candidate c;
-        try {
-            c.id = std::stoi(trim(idStr));
-            c.name = trim(name);
-            c.department = trim(dept);
-            c.voteCount = std::stoi(trim(voteStr));
-        } catch (...) {
-            continue; // 跳过格式错误的行
+    if (ext == "txt") {
+        // 文本格式：支持首行表头；每行按空白切分: id name department voteCount
+        bool firstLine = true;
+        while (std::getline(file, line)) {
+            line = trim(line);
+            if (line.empty()) continue;
+            
+            std::stringstream ss(line);
+            std::string idStr, name, dept, voteStr;
+            if (!(ss >> idStr >> name >> dept)) {
+                // 可能是表头
+                if (firstLine) {
+                    firstLine = false;
+                }
+                continue;
+            }
+            // voteCount 可选，缺省为0
+            if (!(ss >> voteStr)) {
+                voteStr = "0";
+            }
+            
+            Candidate c;
+            try {
+                c.id = std::stoi(trim(idStr));
+                c.name = trim(name);
+                c.department = trim(dept);
+                c.voteCount = std::stoi(trim(voteStr));
+            } catch (...) {
+                continue; // 跳过格式错误的行
+            }
+            
+            candidates.push_back(c);
+            firstLine = false;
+        }
+    } else {
+        // CSV格式：首行表头，其后每行一个候选人
+        if (!std::getline(file, line)) {
+            return false;
         }
         
-        candidates.push_back(c);
+        while (std::getline(file, line)) {
+            line = trim(line);
+            if (line.empty()) continue;
+            
+            std::stringstream ss(line);
+            std::string idStr, name, dept, voteStr;
+            
+            if (!std::getline(ss, idStr, ',')) continue;
+            if (!std::getline(ss, name, ',')) continue;
+            if (!std::getline(ss, dept, ',')) continue;
+            if (!std::getline(ss, voteStr, ',')) continue;
+            
+            Candidate c;
+            try {
+                c.id = std::stoi(trim(idStr));
+                c.name = trim(name);
+                c.department = trim(dept);
+                c.voteCount = std::stoi(trim(voteStr));
+            } catch (...) {
+                continue; // 跳过格式错误的行
+            }
+            
+            candidates.push_back(c);
+        }
     }
     
     file.close();
@@ -83,11 +140,19 @@ bool FileManager::saveVotes(const vector<int> &votes,
     if (!file.is_open()) {
         return false;
     }
+    std::string ext = getFileExtensionLower(filename);
     
-    // 表头
-    file << "vote\n";
-    for (int v : votes) {
-        file << v << '\n';
+    if (ext == "txt") {
+        // 文本格式：每行一个投票ID，不写表头
+        for (int v : votes) {
+            file << v << '\n';
+        }
+    } else {
+        // CSV格式：首行表头“vote”，每行一个ID
+        file << "vote\n";
+        for (int v : votes) {
+            file << v << '\n';
+        }
     }
     
     file.close();
@@ -103,22 +168,53 @@ bool FileManager::loadVotes(vector<int> &votes,
     
     votes.clear();
     std::string line;
+    std::string ext = getFileExtensionLower(filename);
     
-    // 读取表头（可选）
-    if (!std::getline(file, line)) {
-        return false;
-    }
-    
-    while (std::getline(file, line)) {
-        line = trim(line);
-        if (line.empty()) continue;
+    if (ext == "txt") {
+        // 文本格式：支持空白分隔或每行一个数字，无强制表头
+        while (std::getline(file, line)) {
+            line = trim(line);
+            if (line.empty()) continue;
+            
+            std::stringstream ss(line);
+            std::string token;
+            while (ss >> token) {
+                try {
+                    int v = std::stoi(token);
+                    votes.push_back(v);
+                } catch (...) {
+                    // 忽略非数字token
+                    continue;
+                }
+            }
+        }
+    } else {
+        // CSV格式：首行可能是表头，也可能就是第一个数字
+        if (!std::getline(file, line)) {
+            return false;
+        }
         
-        try {
-            int v = std::stoi(line);
-            votes.push_back(v);
-        } catch (...) {
-            // 跳过非数字行（例如表头）
-            continue;
+        line = trim(line);
+        if (!line.empty()) {
+            try {
+                int v0 = std::stoi(line);
+                votes.push_back(v0);
+            } catch (...) {
+                // 视为表头，忽略
+            }
+        }
+        
+        while (std::getline(file, line)) {
+            line = trim(line);
+            if (line.empty()) continue;
+            
+            try {
+                int v = std::stoi(line);
+                votes.push_back(v);
+            } catch (...) {
+                // 跳过非数字行（例如表头）
+                continue;
+            }
         }
     }
     

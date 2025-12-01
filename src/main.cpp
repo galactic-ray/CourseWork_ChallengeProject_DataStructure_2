@@ -10,6 +10,7 @@
 #include <ctime>
 #include <cstring>
 #include <cstdlib>
+#include <chrono>
 #include "../include/election_core.h"
 
 using namespace std;
@@ -575,40 +576,59 @@ public:
             int choice = inputInt("请选择操作 [0-6]: ");
             
             switch (choice) {
-                case 1: 
-                    if (FileManager::saveCandidates(system->getAllCandidates())) {
-                        cout << "✅ 候选人数据保存成功！\n";
+                case 1: {
+                    string filename = inputString("请输入保存文件名（默认: candidates.csv）: ");
+                    if (filename.empty()) filename = "candidates.csv";
+                    if (FileManager::saveCandidates(system->getAllCandidates(), filename)) {
+                        cout << "✅ 候选人数据保存成功！文件: " << filename << "\n";
                     } else {
                         cout << "❌ 保存失败！\n";
                     }
                     waitForEnter();
                     break;
+                }
                 case 2: {
+                    string filename = inputString("请输入加载文件名（默认: candidates.csv）: ");
+                    if (filename.empty()) filename = "candidates.csv";
                     vector<Candidate> candidates;
-                    if (FileManager::loadCandidates(candidates)) {
-                        // 需要重新构建系统（这里简化处理）
-                        cout << "✅ 候选人数据加载成功！\n";
-                        cout << "⚠️  注意：加载数据后需要重新添加候选人到系统。\n";
+                    if (FileManager::loadCandidates(candidates, filename)) {
+                        // 使用加载的数据重建系统中的候选人与票数
+                        system->clearAll();
+                        for (const auto &c : candidates) {
+                            system->addCandidate(c.id, c.name, c.department);
+                            Candidate *loaded = system->queryCandidate(c.id);
+                            if (loaded) {
+                                loaded->voteCount = c.voteCount;
+                            }
+                        }
+                        cout << "✅ 候选人数据加载成功！文件: " << filename
+                             << "（" << candidates.size() << " 个候选人）\n";
                     } else {
                         cout << "❌ 加载失败！\n";
                     }
                     waitForEnter();
                     break;
                 }
-                case 3:
-                    if (FileManager::saveVotes(system->getVoteHistory())) {
-                        cout << "✅ 投票数据保存成功！\n";
+                case 3: {
+                    string filename = inputString("请输入保存文件名（默认: votes.csv）: ");
+                    if (filename.empty()) filename = "votes.csv";
+                    if (FileManager::saveVotes(system->getVoteHistory(), filename)) {
+                        cout << "✅ 投票数据保存成功！文件: " << filename << "\n";
                     } else {
                         cout << "❌ 保存失败！\n";
                     }
                     waitForEnter();
                     break;
+                }
                 case 4: {
+                    string filename = inputString("请输入加载文件名（默认: votes.csv）: ");
+                    if (filename.empty()) filename = "votes.csv";
                     vector<int> votes;
-                    if (FileManager::loadVotes(votes)) {
+                    if (FileManager::loadVotes(votes, filename)) {
                         system->resetVotes();      // 数据维护中的“加载投票数据”先清零
                         system->vote(votes, true); // 再重建
-                        cout << "✅ 投票数据加载成功！\n";
+                        cout << "✅ 投票数据加载成功！文件: " << filename
+                             << "（" << votes.size() << " 张选票）\n";
                     } else {
                         cout << "❌ 加载失败！\n";
                     }
@@ -616,9 +636,11 @@ public:
                     break;
                 }
                 case 5: {
+                    string filename = inputString("请输入报告文件名（默认: election_report.txt）: ");
+                    if (filename.empty()) filename = "election_report.txt";
                     int winnerID = system->findWinner();
-                    if (FileManager::exportReport(system->getAllCandidates(), winnerID)) {
-                        cout << "✅ 统计报告导出成功！文件名: election_report.txt\n";
+                    if (FileManager::exportReport(system->getAllCandidates(), winnerID, filename)) {
+                        cout << "✅ 统计报告导出成功！文件名: " << filename << "\n";
                     } else {
                         cout << "❌ 导出失败！\n";
                     }
@@ -655,15 +677,17 @@ public:
             cout << "  1. 投票数据分析\n";
             cout << "  2. 候选人排名分析\n";
             cout << "  3. 得票分布分析\n";
+            cout << "  4. 性能测试\n";
             cout << "  0. 返回主菜单\n";
             printSeparator();
             
-            int choice = inputInt("请选择操作 [0-3]: ");
+            int choice = inputInt("请选择操作 [0-4]: ");
             
             switch (choice) {
                 case 1: analyzeVoteData(); break;
                 case 2: analyzeRanking(); break;
                 case 3: analyzeDistribution(); break;
+                case 4: analyzePerformance(); break;
                 case 0: return;
                 default: 
                     cout << "❌ 无效的选择！\n";
@@ -755,6 +779,66 @@ public:
                 cout << "] " << c.voteCount << " 票\n";
             }
         }
+        waitForEnter();
+    }
+    
+    /**
+     * 性能测试
+     * 在不同规模下测量批量投票与查找优胜者的耗时
+     */
+    void analyzePerformance() {
+        printTitle("性能测试");
+        
+        struct CaseConfig {
+            int candidates;
+            int votes;
+        };
+        
+        const CaseConfig cases[] = {
+            {10,    100},
+            {100,   10000},
+            {1000,  100000}
+        };
+        
+        cout << "理论复杂度：\n";
+        cout << "  批量投票：O(m)，m 为选票数量\n";
+        cout << "  查找优胜者：O(n)，n 为候选人数\n";
+        cout << "  排序：O(n log n)\n\n";
+        
+        for (const auto &cfg : cases) {
+            ElectionSystem perfSystem;
+            
+            // 构造候选人
+            for (int i = 1; i <= cfg.candidates; ++i) {
+                perfSystem.addCandidate(i, "候选人" + std::to_string(i), "测试组");
+            }
+            
+            // 构造投票向量（均匀分布）
+            std::vector<int> votes;
+            votes.reserve(cfg.votes);
+            for (int i = 0; i < cfg.votes; ++i) {
+                int id = (i % cfg.candidates) + 1;
+                votes.push_back(id);
+            }
+            
+            using clock = std::chrono::steady_clock;
+            auto startVote = clock::now();
+            perfSystem.vote(votes, true);
+            auto endVote = clock::now();
+            auto voteMs = std::chrono::duration_cast<std::chrono::milliseconds>(endVote - startVote).count();
+            
+            auto startFind = clock::now();
+            int winner = perfSystem.findWinner();
+            (void)winner;
+            auto endFind = clock::now();
+            auto findMs = std::chrono::duration_cast<std::chrono::milliseconds>(endFind - startFind).count();
+            
+            cout << "场景： " << cfg.candidates << " 个候选人，"
+                 << cfg.votes << " 张选票\n";
+            cout << "  批量投票耗时： " << voteMs << " ms\n";
+            cout << "  查找优胜者耗时： " << findMs << " ms\n\n";
+        }
+        
         waitForEnter();
     }
     
