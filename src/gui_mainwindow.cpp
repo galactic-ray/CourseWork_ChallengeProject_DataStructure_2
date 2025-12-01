@@ -10,6 +10,7 @@
 #include <QDialogButtonBox>
 #include <QRegExpValidator>
 #include <QIntValidator>
+#include <QElapsedTimer>
 #include <sstream>
 #include <iomanip>
 
@@ -1039,9 +1040,9 @@ void MainWindow::onAnalyzePerformance()
     };
     
     const CaseConfig cases[] = {
-        {10,     100},
-        {100,    10'000},
-        {1'000,  100'000}
+        {10,    100},
+        {100,   10000},
+        {1000,  100000}
     };
     
     QString report;
@@ -1065,7 +1066,6 @@ void MainWindow::onAnalyzePerformance()
         }
         
         QElapsedTimer timer;
-        qint64 tAdd = 0;
         qint64 tVote = 0;
         qint64 tFind = 0;
         

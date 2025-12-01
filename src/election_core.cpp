@@ -12,7 +12,7 @@ static std::string trim(const std::string &s) {
 }
 
 bool FileManager::saveCandidates(const vector<Candidate> &candidates, 
-                                 const string &filename) {
+                                  const string &filename) {
     ofstream file(filename);
     if (!file.is_open()) {
         return false;
