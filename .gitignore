@@ -1,0 +1,173 @@
+# ==================== 编译生成文件 ====================
+
+# 对象文件
+*.o
+*.obj
+src/*.o
+src/*.obj
+
+# 可执行文件
+election_console
+election_gui
+*.exe
+*.out
+*.app
+
+# 库文件
+*.a
+*.so
+*.dylib
+*.dll
+*.lib
+
+# 预编译头文件
+*.gch
+*.pch
+
+# ==================== Qt相关文件 ====================
+
+# MOC生成的文件
+moc_*.cpp
+moc_*.h
+*.moc.cpp
+*.moc.h
+
+# UI生成的文件
+ui_*.h
+
+# Qt Creator用户设置
+*.pro.user
+*.pro.user.*
+
+# Qt Creator自动生成
+*.autosave
+
+# qmake生成的文件
+Makefile
+*.make
+*.qmake.stash
+
+# Qt资源文件（编译后）
+qrc_*.cpp
+
+# ==================== CMake相关文件 ====================
+
+# CMake构建目录
+build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps/
+
+# ==================== IDE相关文件 ====================
+
+# Visual Studio
+.vs/
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.sln
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Visual Studio Code
+.vscode/
+*.code-workspace
+
+# CLion
+.idea/
+cmake-build-*/
+
+# Code::Blocks
+*.cbp
+*.depend
+*.layout
+
+# Eclipse
+.project
+.cproject
+.settings/
+
+# KDevelop
+.kdev4/
+*.kdev4
+
+# ==================== 构建目录 ====================
+
+# 通用构建目录
+bin/
+obj/
+Debug/
+Release/
+build/
+dist/
+out/
+
+# ==================== 运行时生成的文件 ====================
+
+# 数据文件（可选，根据需要取消注释）
+# candidates.dat
+# votes.dat
+# election_report.txt
+
+# 日志文件
+*.log
+
+# 临时文件
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# ==================== 系统文件 ====================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.directory
+
+# ==================== 其他 ====================
+
+# 备份文件
+*.bak
+*.backup
+*.old
+
+# 压缩文件（如果不需要版本控制）
+*.zip
+*.tar.gz
+*.rar
+
+# 测试覆盖率报告
+*.gcov
+*.gcda
+*.gcno
+coverage/
+
+# Valgrind输出
+valgrind-out.txt
+*.memcheck
+
+# 文档生成（如果使用Doxygen等）
+html/
+latex/
+doc/
+
