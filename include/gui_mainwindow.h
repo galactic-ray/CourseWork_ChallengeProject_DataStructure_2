@@ -7,6 +7,12 @@
 #include <QHBoxLayout>
 #include <QGridLayout>
 #include <QPushButton>
+#include <QAction>
+#include <QMenu>
+#include <QMenuBar>
+#include <QStatusBar>
+#include <QToolBar>
+#include <QKeySequence>
 #include <QTableWidget>
 #include <QLineEdit>
 #include <QLabel>
@@ -22,14 +28,6 @@
 #include <QListWidget>
 #include <QSpinBox>
 #include <QTextBrowser>
-#include <QChart>
-#include <QChartView>
-#include <QBarSet>
-#include <QBarSeries>
-#include <QBarCategoryAxis>
-#include <QValueAxis>
-#include <QPieSeries>
-#include <QPieSlice>
 #include <QFile>
 #include <QTextStream>
 #include <QDateTime>
@@ -121,6 +119,7 @@ private:
     // 辅助函数
     void updateCandidateTable();
     void updateStatisticsTable();
+    void updateStatisticsTable(const std::vector<Candidate> &candidates);
     void updateVoteHistoryList();
     void showMessage(const QString &title, const QString &message, bool isError = false);
     bool validateInput(const QString &text, bool isID = false);
@@ -161,8 +160,6 @@ private:
     QPushButton *sortBtn;
     QPushButton *refreshStatisticsBtn;
     QTextBrowser *summaryText;
-    QChartView *voteChartView;
-    QChartView *pieChartView;
     
     // 选举结果界面
     QWidget *resultWidget;

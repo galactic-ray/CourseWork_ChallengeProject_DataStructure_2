@@ -1068,6 +1068,12 @@ void MainWindow::updateVoteHistoryList()
     }
 }
 
+void MainWindow::updateCharts()
+{
+    // Charts were removed from the UI when Qt Charts dependency was dropped.
+    // Keep this stub to satisfy the existing interface and allow future extensions.
+}
+
 void MainWindow::showMessage(const QString &title, const QString &message, bool isError)
 {
     if (isError) {

@@ -25,7 +25,7 @@ RCC_DIR = $$PWD/build
 UI_DIR = $$PWD/build
 
 # 编译器标志
-QMAKE_CXXFLAGS += -Wall -Wextra
+QMAKE_CXXFLAGS += -Wall -Wextra -fPIC
 
 # 发布模式优化
 CONFIG(release, debug|release) {
