@@ -392,3 +392,39 @@ int ElectionSystem::findWinner() {
     return -1; // 没有超过半数的候选人
 }
 
+bool ElectionSystem::undoLastVote() {
+    if (voteHistory.empty()) {
+        return false;
+    }
+    
+    int lastVoteID = voteHistory.back();
+    voteHistory.pop_back();
+    
+    // 减少该候选人的得票数
+    if (idToIndex.count(lastVoteID)) {
+        int index = idToIndex[lastVoteID];
+        if (candidates[index].voteCount > 0) {
+            candidates[index].voteCount--;
+        }
+    }
+    
+    return true;
+}
+
+int ElectionSystem::undoLastVotes(int k) {
+    if (k <= 0) {
+        return 0;
+    }
+    
+    int actualCount = 0;
+    int timesToUndo = std::min(k, static_cast<int>(voteHistory.size()));
+    
+    for (int i = 0; i < timesToUndo; i++) {
+        if (undoLastVote()) {
+            actualCount++;
+        }
+    }
+    
+    return actualCount;
+}
+

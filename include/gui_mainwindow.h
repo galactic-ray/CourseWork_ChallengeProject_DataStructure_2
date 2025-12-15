@@ -61,12 +61,16 @@ public:
     ~MainWindow();
 
 private slots:
+    // 视图与字体
+    void onIncreaseFont();
+    void onDecreaseFont();
+    void onResetFont();
+    
     // 候选人管理
     void onAddCandidate();
     void onModifyCandidate();
     void onDeleteCandidate();
     void onQueryCandidate();
-    void onRefreshCandidateList();
     
     // 投票管理
     void onSingleVote();
@@ -74,6 +78,8 @@ private slots:
     void onImportVotesFromFile();
     void onResetVotes();
     void onShowVoteHistory();
+    void onUndoLastVote();
+    void onUndoMultipleVotes();
     
     // 查询统计
     void onShowStatistics();
@@ -125,6 +131,8 @@ private:
     void showMessage(const QString &title, const QString &message, bool isError = false);
     bool validateInput(const QString &text, bool isID = false);
     void clearInputFields();
+    void applyGlobalStyle();
+    void applyFontScale();
     
     // 核心系统
     ElectionSystem *electionSystem;
@@ -135,6 +143,7 @@ private:
     // 候选人管理界面
     QWidget *candidateWidget;
     QTableWidget *candidateTable;
+    QLabel *candidateEmptyLabel;
     QLineEdit *candidateIdEdit;
     QLineEdit *candidateNameEdit;
     QLineEdit *candidateDeptEdit;
@@ -142,7 +151,9 @@ private:
     QPushButton *modifyCandidateBtn;
     QPushButton *deleteCandidateBtn;
     QPushButton *queryCandidateBtn;
-    QPushButton *refreshCandidateBtn;
+    QPushButton *undoLastVoteBtn;
+    QSpinBox *undoCountSpin;
+    QPushButton *undoMultipleVotesBtn;
     
     // 投票管理界面
     QWidget *voteWidget;
@@ -159,13 +170,11 @@ private:
     QTableWidget *statisticsTable;
     QComboBox *sortComboBox;
     QPushButton *sortBtn;
-    QPushButton *refreshStatisticsBtn;
     QTextBrowser *summaryText;
     
     // 选举结果界面
     QWidget *resultWidget;
     QTextBrowser *resultText;
-    QPushButton *refreshResultBtn;
     QPushButton *exportReportBtn;
     
     // 数据维护界面
@@ -195,6 +204,13 @@ private:
     
     // 状态栏
     QLabel *statusLabel;
+    QPushButton *fontDownBtn;
+    QPushButton *fontResetBtn;
+    QPushButton *fontUpBtn;
+    
+    // 字体缩放
+    int baseFontPointSize;
+    int currentFontDelta;
 };
 
 #endif // MAINWINDOW_H

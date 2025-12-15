@@ -49,19 +49,3 @@ else()
     target_compile_options(election_gui PRIVATE -g -Wall -Wextra)
 endif()
 
-# 控制台版本（终端界面）
-add_executable(election_console
-    src/main.cpp
-    src/election_core.cpp
-)
-
-set_target_properties(election_console PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-)
-
-if(CMAKE_BUILD_TYPE STREQUAL "Release")
-    target_compile_options(election_console PRIVATE -O2)
-else()
-    target_compile_options(election_console PRIVATE -g -Wall -Wextra)
-endif()
-

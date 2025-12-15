@@ -11,11 +11,19 @@
 #include <QRegExpValidator>
 #include <QIntValidator>
 #include <QElapsedTimer>
+#include <QStackedLayout>
 #include <sstream>
 #include <iomanip>
 
 MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent), electionSystem(new ElectionSystem())
+    : QMainWindow(parent),
+      electionSystem(new ElectionSystem()),
+      candidateEmptyLabel(nullptr),
+      fontDownBtn(nullptr),
+      fontResetBtn(nullptr),
+      fontUpBtn(nullptr),
+      baseFontPointSize(13),
+      currentFontDelta(0)
 {
     setWindowTitle("投票选举管理系统 v2.0 - GUI版");
     setMinimumSize(1000, 700);
@@ -24,6 +32,8 @@ MainWindow::MainWindow(QWidget *parent)
     createMenus();
     createStatusBar();
     createCentralWidget();
+    applyGlobalStyle();
+    applyFontScale();
     
     statusLabel->setText("就绪");
 }
@@ -43,19 +53,16 @@ void MainWindow::createMenus()
     
     editMenu = menuBar()->addMenu("编辑(&E)");
     
-    // 当前版本中，数据维护相关操作集中在“数据维护”标签页中，
-    // 这里不再重复提供菜单入口，以简化界面。
-    
     viewMenu = menuBar()->addMenu("视图(&V)");
-    
-    QAction *refreshAction = viewMenu->addAction("刷新(&R)");
-    refreshAction->setShortcut(QKeySequence::Refresh);
-    connect(refreshAction, &QAction::triggered, this, [this]() {
-        updateCandidateTable();
-        updateStatisticsTable();
-        updateVoteHistoryList();
-        onShowElectionResult();
-    });
+    QAction *fontLarger = viewMenu->addAction("字体放大");
+    QAction *fontSmaller = viewMenu->addAction("字体缩小");
+    QAction *fontReset = viewMenu->addAction("恢复默认字体");
+    fontLarger->setShortcut(QKeySequence("Ctrl++"));
+    fontSmaller->setShortcut(QKeySequence("Ctrl+-"));
+    fontReset->setShortcut(QKeySequence("Ctrl+0"));
+    connect(fontLarger, &QAction::triggered, this, &MainWindow::onIncreaseFont);
+    connect(fontSmaller, &QAction::triggered, this, &MainWindow::onDecreaseFont);
+    connect(fontReset, &QAction::triggered, this, &MainWindow::onResetFont);
     
     helpMenu = menuBar()->addMenu("帮助(&H)");
     
@@ -90,6 +97,20 @@ void MainWindow::createStatusBar()
 {
     statusLabel = new QLabel("就绪");
     statusBar()->addWidget(statusLabel);
+
+    statusBar()->addPermanentWidget(new QWidget(), 1); // 占位拉伸
+    fontDownBtn = new QPushButton("A-");
+    fontResetBtn = new QPushButton("A");
+    fontUpBtn = new QPushButton("A+");
+    for (auto btn : {fontDownBtn, fontResetBtn, fontUpBtn}) {
+        btn->setFlat(true);
+        btn->setFocusPolicy(Qt::NoFocus);
+        btn->setProperty("btnRole", "neutral");
+        statusBar()->addPermanentWidget(btn);
+    }
+    connect(fontDownBtn, &QPushButton::clicked, this, &MainWindow::onDecreaseFont);
+    connect(fontResetBtn, &QPushButton::clicked, this, &MainWindow::onResetFont);
+    connect(fontUpBtn, &QPushButton::clicked, this, &MainWindow::onIncreaseFont);
 }
 
 void MainWindow::createCentralWidget()
@@ -115,15 +136,18 @@ void MainWindow::createCandidateManagementWidget()
     QFormLayout *formLayout = new QFormLayout(inputGroup);
     
     candidateIdEdit = new QLineEdit();
+    candidateIdEdit->setPlaceholderText("例如：1001");
     candidateIdEdit->setValidator(new QIntValidator(1, 999999, this));
     formLayout->addRow("编号(&I):", candidateIdEdit);
     
     candidateNameEdit = new QLineEdit();
     candidateNameEdit->setMaxLength(50);
+    candidateNameEdit->setPlaceholderText("例如：张三");
     formLayout->addRow("姓名(&N):", candidateNameEdit);
     
     candidateDeptEdit = new QLineEdit();
     candidateDeptEdit->setMaxLength(100);
+    candidateDeptEdit->setPlaceholderText("例如：计算机学院");
     formLayout->addRow("所属单位(&D):", candidateDeptEdit);
     
     // 按钮区域
@@ -132,13 +156,11 @@ void MainWindow::createCandidateManagementWidget()
     modifyCandidateBtn = new QPushButton("修改");
     deleteCandidateBtn = new QPushButton("删除");
     queryCandidateBtn = new QPushButton("查询");
-    refreshCandidateBtn = new QPushButton("刷新");
     
     buttonLayout->addWidget(addCandidateBtn);
     buttonLayout->addWidget(modifyCandidateBtn);
     buttonLayout->addWidget(deleteCandidateBtn);
     buttonLayout->addWidget(queryCandidateBtn);
-    buttonLayout->addWidget(refreshCandidateBtn);
     buttonLayout->addStretch();
     
     formLayout->addRow(buttonLayout);
@@ -146,6 +168,10 @@ void MainWindow::createCandidateManagementWidget()
     // 表格区域
     QGroupBox *tableGroup = new QGroupBox("候选人列表");
     QVBoxLayout *tableLayout = new QVBoxLayout(tableGroup);
+    
+    // 表格 + 空状态叠加
+    QWidget *tableContainer = new QWidget();
+    QStackedLayout *stackLayout = new QStackedLayout(tableContainer);
     
     candidateTable = new QTableWidget();
     candidateTable->setColumnCount(4);
@@ -159,7 +185,13 @@ void MainWindow::createCandidateManagementWidget()
     connect(candidateTable, &QTableWidget::itemSelectionChanged, 
             this, &MainWindow::onCandidateTableSelectionChanged);
     
-    tableLayout->addWidget(candidateTable);
+    candidateEmptyLabel = new QLabel("暂无候选人数据\n请在上方添加候选人或从文件加载");
+    candidateEmptyLabel->setAlignment(Qt::AlignCenter);
+    candidateEmptyLabel->setStyleSheet("color: #999999; font-size: 14px;");
+    
+    stackLayout->addWidget(candidateTable);
+    stackLayout->addWidget(candidateEmptyLabel);
+    tableLayout->addWidget(tableContainer);
     
     mainLayout->addWidget(inputGroup);
     mainLayout->addWidget(tableGroup);
@@ -169,7 +201,6 @@ void MainWindow::createCandidateManagementWidget()
     connect(modifyCandidateBtn, &QPushButton::clicked, this, &MainWindow::onModifyCandidate);
     connect(deleteCandidateBtn, &QPushButton::clicked, this, &MainWindow::onDeleteCandidate);
     connect(queryCandidateBtn, &QPushButton::clicked, this, &MainWindow::onQueryCandidate);
-    connect(refreshCandidateBtn, &QPushButton::clicked, this, &MainWindow::onRefreshCandidateList);
     
     mainTabWidget->addTab(candidateWidget, "候选人管理");
 }
@@ -211,6 +242,23 @@ void MainWindow::createVoteManagementWidget()
     batchButtonLayout->addStretch();
     batchLayout->addLayout(batchButtonLayout);
     
+    // 撤销投票区域
+    QGroupBox *undoGroup = new QGroupBox("投票撤销");
+    QHBoxLayout *undoLayout = new QHBoxLayout(undoGroup);
+    
+    undoLastVoteBtn = new QPushButton("撤销最近一票");
+    undoMultipleVotesBtn = new QPushButton("撤销多票");
+    undoCountSpin = new QSpinBox();
+    undoCountSpin->setMinimum(1);
+    undoCountSpin->setMaximum(1000000);
+    undoCountSpin->setValue(1);
+    
+    undoLayout->addWidget(undoLastVoteBtn);
+    undoLayout->addWidget(new QLabel("撤销数量:"));
+    undoLayout->addWidget(undoCountSpin);
+    undoLayout->addWidget(undoMultipleVotesBtn);
+    undoLayout->addStretch();
+    
     // 投票历史区域
     QGroupBox *historyGroup = new QGroupBox("投票历史");
     QVBoxLayout *historyLayout = new QVBoxLayout(historyGroup);
@@ -218,12 +266,9 @@ void MainWindow::createVoteManagementWidget()
     voteHistoryList = new QListWidget();
     historyLayout->addWidget(voteHistoryList);
     
-    QPushButton *showHistoryBtn = new QPushButton("刷新历史");
-    connect(showHistoryBtn, &QPushButton::clicked, this, &MainWindow::onShowVoteHistory);
-    historyLayout->addWidget(showHistoryBtn);
-    
     mainLayout->addWidget(singleVoteGroup);
     mainLayout->addWidget(batchVoteGroup);
+    mainLayout->addWidget(undoGroup);
     mainLayout->addWidget(historyGroup);
     
     // 连接信号
@@ -231,6 +276,8 @@ void MainWindow::createVoteManagementWidget()
     connect(batchVoteBtn, &QPushButton::clicked, this, &MainWindow::onBatchVote);
     connect(importVotesBtn, &QPushButton::clicked, this, &MainWindow::onImportVotesFromFile);
     connect(resetVotesBtn, &QPushButton::clicked, this, &MainWindow::onResetVotes);
+    connect(undoLastVoteBtn, &QPushButton::clicked, this, &MainWindow::onUndoLastVote);
+    connect(undoMultipleVotesBtn, &QPushButton::clicked, this, &MainWindow::onUndoMultipleVotes);
     
     mainTabWidget->addTab(voteWidget, "投票管理");
 }
@@ -254,19 +301,20 @@ void MainWindow::createStatisticsWidget()
     statisticsTable->setAlternatingRowColors(true);
     tableLayout->addWidget(statisticsTable);
     
-    // 排序和刷新
+    // 排序工具条（右上角紧凑布局）
     QHBoxLayout *controlLayout = new QHBoxLayout();
-    controlLayout->addWidget(new QLabel("排序方式:"));
+    controlLayout->addStretch();
+    QLabel *sortLabel = new QLabel("排序:");
+    controlLayout->addWidget(sortLabel);
     sortComboBox = new QComboBox();
     sortComboBox->addItems(QStringList() << "按得票数降序" << "按得票数升序" 
                                          << "按编号" << "按姓名");
+    sortComboBox->setFixedWidth(120);
     controlLayout->addWidget(sortComboBox);
     
     sortBtn = new QPushButton("排序");
-    refreshStatisticsBtn = new QPushButton("刷新");
+    sortBtn->setFixedWidth(60);
     controlLayout->addWidget(sortBtn);
-    controlLayout->addWidget(refreshStatisticsBtn);
-    controlLayout->addStretch();
     tableLayout->addLayout(controlLayout);
     
     // 统计摘要
@@ -282,7 +330,6 @@ void MainWindow::createStatisticsWidget()
     
     // 连接信号
     connect(sortBtn, &QPushButton::clicked, this, &MainWindow::onSortCandidates);
-    connect(refreshStatisticsBtn, &QPushButton::clicked, this, &MainWindow::onShowStatistics);
     
     mainTabWidget->addTab(statisticsWidget, "查询统计");
 }
@@ -299,9 +346,7 @@ void MainWindow::createElectionResultWidget()
     resultLayout->addWidget(resultText);
     
     QHBoxLayout *buttonLayout = new QHBoxLayout();
-    refreshResultBtn = new QPushButton("刷新结果");
     exportReportBtn = new QPushButton("导出报告");
-    buttonLayout->addWidget(refreshResultBtn);
     buttonLayout->addWidget(exportReportBtn);
     buttonLayout->addStretch();
     resultLayout->addLayout(buttonLayout);
@@ -309,7 +354,6 @@ void MainWindow::createElectionResultWidget()
     mainLayout->addWidget(resultGroup);
     
     // 连接信号
-    connect(refreshResultBtn, &QPushButton::clicked, this, &MainWindow::onShowElectionResult);
     connect(exportReportBtn, &QPushButton::clicked, this, &MainWindow::onExportReport);
     
     mainTabWidget->addTab(resultWidget, "选举结果");
@@ -320,7 +364,7 @@ void MainWindow::createDataMaintenanceWidget()
     maintenanceWidget = new QWidget();
     QVBoxLayout *mainLayout = new QVBoxLayout(maintenanceWidget);
     
-    QGroupBox *operationGroup = new QGroupBox("数据操作");
+    QGroupBox *operationGroup = new QGroupBox("数据处理");
     QGridLayout *gridLayout = new QGridLayout(operationGroup);
     
     saveCandidatesBtn = new QPushButton("保存候选人数据");
@@ -337,7 +381,7 @@ void MainWindow::createDataMaintenanceWidget()
     gridLayout->addWidget(loadSampleCandidatesBtn, 2, 0, 1, 2);
     gridLayout->addWidget(clearAllBtn, 3, 0, 1, 2);
     
-    QGroupBox *logGroup = new QGroupBox("操作日志");
+    QGroupBox *logGroup = new QGroupBox("系统日志");
     QVBoxLayout *logLayout = new QVBoxLayout(logGroup);
     
     maintenanceLog = new QTextBrowser();
@@ -520,11 +564,6 @@ void MainWindow::onQueryCandidate()
     }
 }
 
-void MainWindow::onRefreshCandidateList()
-{
-    updateCandidateTable();
-}
-
 void MainWindow::onCandidateTableSelectionChanged()
 {
     QList<QTableWidgetItem*> items = candidateTable->selectedItems();
@@ -533,6 +572,11 @@ void MainWindow::onCandidateTableSelectionChanged()
         QString id = candidateTable->item(row, 0)->text();
         candidateIdEdit->setText(id);
         onQueryCandidate();
+        modifyCandidateBtn->setEnabled(true);
+        deleteCandidateBtn->setEnabled(true);
+    } else {
+        modifyCandidateBtn->setEnabled(false);
+        deleteCandidateBtn->setEnabled(false);
     }
 }
 
@@ -565,23 +609,29 @@ void MainWindow::onBatchVote()
     
     QStringList parts = text.split(QRegExp("\\s+"), QString::SkipEmptyParts);
     vector<int> votes;
+    int invalidTokens = 0;
     
     for (const QString &part : parts) {
-        bool ok;
+        bool ok = false;
         int vote = part.toInt(&ok);
-        if (ok && vote > 0) {
-            votes.push_back(vote);
+        if (!ok || vote <= 0) {
+            invalidTokens++;
+            continue;
         }
+        votes.push_back(vote);
     }
     
     if (votes.empty()) {
-        showMessage("错误", "无效的投票向量！", true);
+        QString detail = invalidTokens > 0
+            ? QString("全部输入均无效（无效项: %1）").arg(invalidTokens)
+            : "无效的投票向量！";
+        showMessage("错误", detail, true);
         return;
     }
     
     electionSystem->vote(votes, false);
     
-    int totalVotes = votes.size();
+    int totalVotes = static_cast<int>(votes.size()) + invalidTokens;
     const vector<Candidate> &candidates = electionSystem->getAllCandidates();
     vector<int> validIDList;
     for (const auto &c : candidates) {
@@ -589,10 +639,11 @@ void MainWindow::onBatchVote()
     }
     
     int invalidCount = DataValidator::validateVoteVector(votes, validIDList);
+    int totalInvalid = invalidCount + invalidTokens;
     
     QString message = QString("批量投票完成！\n总票数: %1").arg(totalVotes);
-    if (invalidCount > 0) {
-        message += QString("\n无效票数: %1").arg(invalidCount);
+    if (totalInvalid > 0) {
+        message += QString("\n无效票数: %1").arg(totalInvalid);
     }
     
     showMessage("成功", message);
@@ -646,6 +697,39 @@ void MainWindow::onResetVotes()
     }
 }
 
+void MainWindow::onUndoLastVote()
+{
+    if (electionSystem->undoLastVote()) {
+        showMessage("成功", "已撤销最近一张选票");
+        updateCandidateTable();
+        updateStatisticsTable();
+        updateVoteHistoryList();
+        onShowSummary();
+        onShowElectionResult();
+        statusLabel->setText("已撤销最近一票");
+    } else {
+        showMessage("提示", "没有可撤销的投票记录。");
+    }
+}
+
+void MainWindow::onUndoMultipleVotes()
+{
+    int count = undoCountSpin ? undoCountSpin->value() : 0;
+    int undone = electionSystem->undoLastVotes(count);
+    
+    if (undone > 0) {
+        showMessage("成功", QString("已撤销最近 %1 张选票").arg(undone));
+        updateCandidateTable();
+        updateStatisticsTable();
+        updateVoteHistoryList();
+        onShowSummary();
+        onShowElectionResult();
+        statusLabel->setText(QString("已撤销 %1 张选票").arg(undone));
+    } else {
+        showMessage("提示", "没有可撤销的投票记录。");
+    }
+}
+
 void MainWindow::onShowVoteHistory()
 {
     updateVoteHistoryList();
@@ -687,7 +771,7 @@ void MainWindow::onShowSummary()
     const vector<Candidate> &candidates = electionSystem->getAllCandidates();
     
     if (candidates.empty()) {
-        summaryText->setPlainText("暂无数据");
+        summaryText->setHtml("<p style='color:#909399;'>暂无数据</p>");
         return;
     }
     
@@ -697,18 +781,25 @@ void MainWindow::onShowSummary()
     int minVotes = Statistics::getMinVotes(candidates);
     
     QString summary = QString(
-        "候选人总数: %1\n"
-        "总票数: %2\n"
-        "平均得票数: %3\n"
-        "最高得票数: %4\n"
-        "最低得票数: %5")
+        "<div style='display:flex; gap:32px;'>"
+        "  <div><div style='font-size:12px;color:#909399;'>候选人总数</div>"
+        "       <div style='font-size:20px;font-weight:600;color:#303133;'>%1</div></div>"
+        "  <div><div style='font-size:12px;color:#909399;'>总票数</div>"
+        "       <div style='font-size:20px;font-weight:600;color:#303133;'>%2</div></div>"
+        "  <div><div style='font-size:12px;color:#909399;'>平均得票数</div>"
+        "       <div style='font-size:20px;font-weight:600;color:#303133;'>%3</div></div>"
+        "  <div><div style='font-size:12px;color:#909399;'>最高得票数</div>"
+        "       <div style='font-size:20px;font-weight:600;color:#303133;'>%4</div></div>"
+        "  <div><div style='font-size:12px;color:#909399;'>最低得票数</div>"
+        "       <div style='font-size:20px;font-weight:600;color:#303133;'>%5</div></div>"
+        "</div>")
         .arg(candidates.size())
         .arg(totalVotes)
         .arg(avgVotes, 0, 'f', 2)
         .arg(maxVotes)
         .arg(minVotes);
     
-    summaryText->setPlainText(summary);
+    summaryText->setHtml(summary);
 }
 
 // ==================== 选举结果槽函数 ====================
@@ -1089,16 +1180,30 @@ void MainWindow::updateCandidateTable()
 {
     const vector<Candidate> &candidates = electionSystem->getAllCandidates();
     
-    candidateTable->setRowCount(candidates.size());
+    candidateTable->setRowCount(static_cast<int>(candidates.size()));
     
     for (size_t i = 0; i < candidates.size(); i++) {
-        candidateTable->setItem(i, 0, new QTableWidgetItem(QString::number(candidates[i].id)));
-        candidateTable->setItem(i, 1, new QTableWidgetItem(QString::fromStdString(candidates[i].name)));
-        candidateTable->setItem(i, 2, new QTableWidgetItem(QString::fromStdString(candidates[i].department)));
-        candidateTable->setItem(i, 3, new QTableWidgetItem(QString::number(candidates[i].voteCount)));
+        auto *idItem   = new QTableWidgetItem(QString::number(candidates[i].id));
+        auto *nameItem = new QTableWidgetItem(QString::fromStdString(candidates[i].name));
+        auto *deptItem = new QTableWidgetItem(QString::fromStdString(candidates[i].department));
+        auto *voteItem = new QTableWidgetItem(QString::number(candidates[i].voteCount));
+
+        idItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        voteItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+
+        candidateTable->setItem(i, 0, idItem);
+        candidateTable->setItem(i, 1, nameItem);
+        candidateTable->setItem(i, 2, deptItem);
+        candidateTable->setItem(i, 3, voteItem);
     }
     
     candidateTable->resizeColumnsToContents();
+
+    if (candidateEmptyLabel) {
+        bool hasData = !candidates.empty();
+        candidateTable->parentWidget()->setProperty("currentIndex", hasData ? 0 : 1);
+        candidateEmptyLabel->setVisible(!hasData);
+    }
 }
 
 void MainWindow::updateStatisticsTable()
@@ -1108,19 +1213,50 @@ void MainWindow::updateStatisticsTable()
 
 void MainWindow::updateStatisticsTable(const vector<Candidate> &candidates)
 {
-    statisticsTable->setRowCount(candidates.size());
+    statisticsTable->setRowCount(static_cast<int>(candidates.size()));
     
     int totalVotes = Statistics::getTotalVotes(candidates);
+    int maxVotes = Statistics::getMaxVotes(candidates);
     
     for (size_t i = 0; i < candidates.size(); i++) {
         double percentage = totalVotes > 0 ? 
             (100.0 * candidates[i].voteCount / totalVotes) : 0.0;
         
-        statisticsTable->setItem(i, 0, new QTableWidgetItem(QString::number(candidates[i].id)));
-        statisticsTable->setItem(i, 1, new QTableWidgetItem(QString::fromStdString(candidates[i].name)));
-        statisticsTable->setItem(i, 2, new QTableWidgetItem(QString::fromStdString(candidates[i].department)));
-        statisticsTable->setItem(i, 3, new QTableWidgetItem(QString::number(candidates[i].voteCount)));
-        statisticsTable->setItem(i, 4, new QTableWidgetItem(QString::number(percentage, 'f', 2) + "%"));
+        auto *idItem = new QTableWidgetItem(QString::number(candidates[i].id));
+        auto *nameItem = new QTableWidgetItem(QString::fromStdString(candidates[i].name));
+        auto *deptItem = new QTableWidgetItem(QString::fromStdString(candidates[i].department));
+        auto *voteItem = new QTableWidgetItem(QString::number(candidates[i].voteCount));
+        auto *rateItem = new QTableWidgetItem(QString::number(percentage, 'f', 2) + "%");
+
+        // 数字列右对齐
+        idItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        voteItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        rateItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+
+        // 非 0 得票数/得票率用更深的颜色
+        if (candidates[i].voteCount > 0) {
+            voteItem->setForeground(QColor("#303133"));
+            rateItem->setForeground(QColor("#303133"));
+            voteItem->setFont(QFont(QApplication::font().family(), QApplication::font().pointSize(), QFont::DemiBold));
+            rateItem->setFont(QFont(QApplication::font().family(), QApplication::font().pointSize() + 1, QFont::Bold));
+        } else {
+            rateItem->setForeground(QColor("#C0C4CC"));
+        }
+
+        // 最高票行高亮并加星标
+        if (maxVotes > 0 && candidates[i].voteCount == maxVotes) {
+            nameItem->setText(nameItem->text() + " ★");
+            for (QTableWidgetItem *it : {idItem, nameItem, deptItem, voteItem, rateItem}) {
+                if (!it) continue;
+                it->setBackground(QColor("#F0F5FF"));
+            }
+        }
+
+        statisticsTable->setItem(i, 0, idItem);
+        statisticsTable->setItem(i, 1, nameItem);
+        statisticsTable->setItem(i, 2, deptItem);
+        statisticsTable->setItem(i, 3, voteItem);
+        statisticsTable->setItem(i, 4, rateItem);
     }
     
     statisticsTable->resizeColumnsToContents();
@@ -1159,6 +1295,231 @@ void MainWindow::showMessage(const QString &title, const QString &message, bool 
     }
 }
 
+void MainWindow::applyGlobalStyle()
+{
+    // 基础字体：中文友好，默认 15 号
+    QFont baseFont;
+#if defined(Q_OS_WIN)
+    baseFont.setFamily("Microsoft YaHei");
+#elif defined(Q_OS_MAC)
+    baseFont.setFamily("PingFang SC");
+#else
+    baseFont.setFamily("WenQuanYi Micro Hei");
+#endif
+    baseFont.setPointSize(baseFontPointSize);
+    QApplication::setFont(baseFont);
+
+    // 全局样式表
+    QString style = R"(
+        QMainWindow {
+            background: #f5f7fa;
+        }
+
+        QTabWidget::pane {
+            border: none;
+        }
+        QTabBar::tab {
+            padding: 6px 14px;
+            font-size: 13px;
+            color: #606266;
+        }
+        QTabBar::tab:selected {
+            color: #303133;
+            font-weight: 600;
+            border-bottom: 2px solid #409eff;
+        }
+        QTabBar::tab:!selected {
+            margin-top: 2px;
+        }
+
+        QGroupBox {
+            background: #ffffff;
+            border: 1px solid #dcdfe6;
+            border-radius: 8px;
+            margin-top: 18px;
+        }
+        QGroupBox::title {
+            subcontrol-origin: margin;
+            subcontrol-position: top left;
+            padding: 0 8px;
+            margin-left: 4px;
+            background: #f0f2f5;
+            /* 和普通标签同字号，不再特意放大 */
+            font-weight: normal;
+            font-size: 13px;
+            color: #303133;
+        }
+
+        QLabel {
+            color: #303133;
+            font-size: 13px;
+        }
+
+        QLineEdit, QComboBox, QTextEdit, QSpinBox {
+            border: 1px solid #dcdfe6;
+            border-radius: 4px;
+            padding: 4px 6px;
+            background: #ffffff;
+            color: #303133;
+            selection-background-color: #409eff;
+            selection-color: #ffffff;
+        }
+        QLineEdit:focus, QComboBox:focus, QTextEdit:focus, QSpinBox:focus {
+            border: 1px solid #409eff;
+            box-shadow: 0 0 0 2px rgba(64,158,255,0.15);
+        }
+        QLineEdit::placeholder {
+            /* 占位符使用更浅的灰色，弱化存在感 */
+            color: #C0C4CC;
+        }
+
+        QTextBrowser {
+            border: 1px solid #e4e7ed;
+            border-radius: 4px;
+            background: #fafafa;
+        }
+
+        QTableWidget {
+            background: #ffffff;
+            border: 1px solid #dcdfe6;
+            border-radius: 6px;
+            gridline-color: transparent;
+            alternate-background-color: #FAFBFC;
+        }
+        QTableView::item {
+            padding: 4px 6px;
+        }
+        QTableView::item:selected {
+            background: #ecf5ff;
+            color: #303133;
+        }
+        QHeaderView::section {
+            background: #F2F4F7;
+            padding: 6px 8px;
+            border: none;
+            border-right: 1px solid #e4e7ed;
+            font-weight: 600;
+            font-size: 13px;
+        }
+
+        QListWidget {
+            border: 1px solid #dcdfe6;
+            border-radius: 4px;
+            background: #ffffff;
+        }
+
+        QStatusBar {
+            background: #f0f2f5;
+        }
+        QStatusBar QLabel {
+            color: #606266;
+        }
+
+        QMenuBar {
+            background: #ffffff;
+        }
+        QMenuBar::item {
+            padding: 4px 8px;
+        }
+        QMenuBar::item:selected {
+            background: #ecf5ff;
+        }
+        QMenu {
+            background: #ffffff;
+            border: 1px solid #dcdfe6;
+        }
+        QMenu::item {
+            padding: 4px 24px 4px 20px;
+        }
+        QMenu::item:selected {
+            background: #ecf5ff;
+        }
+
+        QToolBar {
+            background: #ffffff;
+            border-bottom: 1px solid #e4e7ed;
+        }
+
+        QPushButton {
+            min-height: 28px;
+            padding: 4px 12px;
+            border-radius: 4px;
+            border: 1px solid #dcdfe6;
+            background: #ffffff;
+            color: #303133;
+        }
+        QPushButton:hover {
+            background: #f5f7fa;
+        }
+        QPushButton:disabled {
+            background: #f5f7fa;
+            color: #c0c4cc;
+            border-color: #ebeef5;
+        }
+
+        QPushButton[btnRole="primary"] {
+            background: #409eff;
+            border-color: #409eff;
+            color: #ffffff;
+        }
+        QPushButton[btnRole="primary"]:hover {
+            background: #66b1ff;
+            border-color: #66b1ff;
+        }
+
+        QPushButton[btnRole="secondary"] {
+            background: #ecf5ff;
+            border-color: #c6e2ff;
+            color: #409eff;
+        }
+
+        QPushButton[btnRole="danger"] {
+            background: #f56c6c;
+            border-color: #f56c6c;
+            color: #ffffff;
+        }
+        QPushButton[btnRole="danger"]:hover {
+            background: #f78989;
+            border-color: #f78989;
+        }
+
+        QPushButton[btnRole="neutral"] {
+            background: #ffffff;
+            border-color: #dcdfe6;
+            color: #606266;
+        }
+
+        QTextBrowser#maintenanceLog {
+            background: #f7f7f7;
+            border-color: #e4e7ed;
+            color: #606266;
+            font-size: 13px;
+        }
+    )";
+
+    this->setStyleSheet(style);
+}
+
+void MainWindow::applyFontScale()
+{
+    int pointSize = baseFontPointSize + currentFontDelta;
+    if (pointSize < 10) pointSize = 10;
+    if (pointSize > 22) pointSize = 22;
+
+    QFont f = QApplication::font();
+    f.setPointSize(pointSize);
+    QApplication::setFont(f);
+
+    // 同步表格行高
+    int rowH = pointSize + 10;
+    auto adjustTable = [rowH](QTableWidget *table) {
+        if (!table) return;
+        table->verticalHeader()->setDefaultSectionSize(rowH);
+    };
+    adjustTable(candidateTable);
+    adjustTable(statisticsTable);
+}
+
 bool MainWindow::validateInput(const QString &text, bool isID)
 {
     if (text.isEmpty()) {
@@ -1179,6 +1540,24 @@ void MainWindow::clearInputFields()
     candidateIdEdit->clear();
     candidateNameEdit->clear();
     candidateDeptEdit->clear();
+}
+
+void MainWindow::onIncreaseFont()
+{
+    currentFontDelta += 1;
+    applyFontScale();
+}
+
+void MainWindow::onDecreaseFont()
+{
+    currentFontDelta -= 1;
+    applyFontScale();
+}
+
+void MainWindow::onResetFont()
+{
+    currentFontDelta = 0;
+    applyFontScale();
 }
 
 void MainWindow::onLoadSampleCandidates()

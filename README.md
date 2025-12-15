@@ -87,9 +87,7 @@
 
 ## 编译和运行
 
-本项目提供两个版本（均通过 **CMake** 统一编译）：
-1. **控制台版本** - 基于文本的交互式界面
-2. **GUI版本** - 基于Qt的图形用户界面（推荐）
+本项目当前提供 **GUI 版本**（基于 Qt 的图形用户界面，通过 CMake 编译）。
 
 ### 环境要求
 
@@ -104,7 +102,7 @@ sudo apt-get update
 sudo apt-get install qtbase5-dev
 ```
 
-### 使用 CMake 编译（同时生成控制台版和 GUI 版）
+### 使用 CMake 编译
 
 ```bash
 cd code2
@@ -114,21 +112,8 @@ cmake ..
 make
 ```
 
-编译完成后，`build/bin/` 下会生成两个可执行文件：
-
-- 控制台版本：`build/bin/election_console`
-- GUI 版本：`build/bin/election_gui`
-
-### 运行控制台版本
-
-```bash
-cd code2/build
-./bin/election_console
-```
-
-运行后可以选择：
-- **模式1**：交互式界面（推荐）
-- **模式2**：运行测试用例
+编译完成后，`build/bin/` 下会生成 GUI 可执行文件：
+- `build/bin/election_gui`
 
 ### 运行GUI版本
 
@@ -141,7 +126,6 @@ cd code2/build
 
 - **美观的图形界面** - 现代化的Qt界面设计
 - **标签页组织** - 功能模块清晰分类
-- **实时数据更新** - 操作后自动刷新显示
 - **数据可视化** - 表格、统计摘要、得票分布
 - **文件对话框** - 方便的文件选择和管理
 - **操作日志** - 记录所有数据维护操作
@@ -150,7 +134,7 @@ cd code2/build
 
 ### 示例1：基本投票流程
 
-1. 启动程序，选择交互式界面
+1. 启动程序，进入 GUI 主界面
 2. 进入"候选人管理" → "添加候选人"
    - 添加编号1，姓名"张三"，单位"计算机学院"
    - 添加编号2，姓名"李四"，单位"数学学院"
@@ -192,12 +176,6 @@ cd code2/build
 3. **数据验证测试** - 验证无效输入的处理
 4. **无效投票处理** - 验证系统对无效投票的容错能力
 
-运行测试用例：
-```bash
-./election
-# 选择模式2
-```
-
 ## 性能分析
 
 > GUI 中“高级功能 → 性能测试”提供了不同规模下的实测性能，这里给出理论复杂度总结。
@@ -238,17 +216,15 @@ code2/
 │   └── gui_mainwindow.h  # GUI主窗口头文件
 ├── src/                  # 源文件目录
 │   ├── election_core.cpp # 核心选举系统实现
-│   ├── main.cpp          # 控制台版本主程序
 │   ├── gui_main.cpp      # GUI版本主程序
 │   └── gui_mainwindow.cpp # GUI主窗口实现
-├── CMakeLists.txt        # CMake项目文件（同时生成控制台和GUI版本）
+├── CMakeLists.txt        # CMake项目文件（生成GUI版本）
 ├── README.md             # 本文件，项目说明与性能分析
 └── .gitignore            # Git 忽略规则
 ```
 
 ### 核心文件
-- `include/election_core.h` / `src/election_core.cpp` - 核心选举系统（供GUI和控制台版本共用）
-- `src/main.cpp` - 控制台版本主程序
+- `include/election_core.h` / `src/election_core.cpp` - 核心选举系统
 - `src/gui_main.cpp` - GUI版本主程序
 - `include/gui_mainwindow.h` / `src/gui_mainwindow.cpp` - GUI主窗口实现
 
@@ -259,34 +235,8 @@ code2/
 
 ## 系统要求
 
-### 控制台版本
-- C++11 或更高版本
-- 支持STL标准库
-- Linux/Windows/macOS 操作系统
-
 ### GUI版本
 - C++11 或更高版本
 - Qt5.7 或更高版本
 - 支持STL标准库
 - Linux/Windows/macOS 操作系统
-
-## 作者
-
-研究性学习与创新性设计项目
-
-## 版本历史
-
-- **v2.0** (2024) - GUI版本
-  - 新增基于Qt的图形用户界面
-  - 代码重构，核心模块独立
-  - 支持控制台和GUI双版本
-  - 改进的用户体验和界面设计
-  - 完整的项目配置文件（qmake、CMake、Makefile）
-
-- **v1.0** (2024) - 初始版本
-  - 实现基本投票选举功能
-  - 模块化设计
-  - 完整的控制台用户界面
-  - 数据验证和文件管理
-  - 高级统计分析功能
-

@@ -10,6 +10,9 @@
 #include <iomanip>
 #include <ctime>
 #include <iostream>
+#include <cctype>
+#include <locale>
+#include <codecvt>
 
 using namespace std;
 
@@ -59,21 +62,29 @@ public:
         if (name.empty() || name.length() > 50) {
             return false;
         }
-        // 检查是否包含非法字符
-        // 允许：字母、数字、空格、下划线、连字符、中文字符
-        for (unsigned char c : name) {
-            // 允许ASCII字母数字和常用符号
-            if (isalnum(c) || c == ' ' || c == '_' || c == '-') {
+        
+        bool hasLetter = false;
+        for (size_t i = 0; i < name.size(); ++i) {
+            unsigned char c = static_cast<unsigned char>(name[i]);
+            
+            if (c < 0x80) {
+                // 仅允许英文字符和空格
+                if (std::isalpha(c)) {
+                    hasLetter = true;
+                    continue;
+                }
+                if (c == ' ') {
+                    continue;
+                }
+                // 其他 ASCII（数字、标点等）不允许
+                return false;
+            } else {
+                // 非 ASCII：视为中文字符（UTF-8 多字节的一部分）
+                hasLetter = true;
                 continue;
             }
-            // 允许中文字符（UTF-8编码）
-            if (static_cast<unsigned char>(c) >= 0x80) {
-                continue; // 可能是中文字符，允许
-            }
-            // 其他字符视为非法
-            return false;
         }
-        return true;
+        return hasLetter;
     }
     
     /**
@@ -255,13 +266,69 @@ public:
     }
     
     /**
-     * 按姓名排序候选人
+     * 按姓名排序候选人（标准字典序升序）
      * @param candidates 候选人列表（会被修改）
      */
     static void sortByName(vector<Candidate> &candidates) {
-        sort(candidates.begin(), candidates.end(), 
-             [](const Candidate &a, const Candidate &b) {
-                 return a.name < b.name;
+        auto isAsciiEnglishName = [](const string &name) -> bool {
+            if (name.empty()) return false;
+            for (unsigned char c : name) {
+                if (c >= 0x80) return false;
+                if (!(std::isalpha(c) || c == ' ')) {
+                    return false;
+                }
+            }
+            return true;
+        };
+        
+        auto makeAsciiKey = [](const string &name) -> string {
+            string key;
+            key.reserve(name.size());
+            for (unsigned char c : name) {
+                if (c == ' ') continue;
+                key.push_back(static_cast<char>(std::tolower(c)));
+            }
+            return key;
+        };
+        
+        auto makeChineseKey = [](const string &name) -> string {
+            try {
+                // 使用中文本地化规则在 UTF-8 字节序上生成排序键，近似按拼音排序
+                static std::locale zhLoc("zh_CN.UTF-8");
+                const auto &coll = std::use_facet<std::collate<char>>(zhLoc);
+                return coll.transform(name.data(), name.data() + name.size());
+            } catch (...) {
+                // 回退：直接使用原始字节序
+                return name;
+            }
+        };
+        
+        sort(candidates.begin(), candidates.end(),
+             [&](const Candidate &a, const Candidate &b) {
+                 bool aEng = isAsciiEnglishName(a.name);
+                 bool bEng = isAsciiEnglishName(b.name);
+                 
+                 // 所有英文名排在中文名之前
+                 if (aEng != bEng) {
+                     return aEng; // true 在前
+                 }
+                 
+                 if (aEng && bEng) {
+                     string ka = makeAsciiKey(a.name);
+                     string kb = makeAsciiKey(b.name);
+                     if (ka == kb) {
+                         return a.id < b.id;
+                     }
+                     return ka < kb;
+                 }
+                 
+                 // 中文（或混合）名：使用本地化排序键
+                 string ka = makeChineseKey(a.name);
+                 string kb = makeChineseKey(b.name);
+                 if (ka == kb) {
+                     return a.id < b.id;
+                 }
+                 return ka < kb;
              });
     }
 };
@@ -385,6 +452,19 @@ public:
     const vector<int>& getVoteHistory() const {
         return voteHistory;
     }
+    
+    /**
+     * 撤销最近一次投票
+     * @return true 撤销成功，false 无投票可撤销
+     */
+    bool undoLastVote();
+    
+    /**
+     * 撤销最近k次投票
+     * @param k 要撤销的次数（<= 投票历史长度），<=0时不操作
+     * @return 实际撤销次数
+     */
+    int undoLastVotes(int k);
     
     /**
      * 清空所有数据
