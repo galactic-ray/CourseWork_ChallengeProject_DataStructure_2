@@ -1040,7 +1040,7 @@ void MainWindow::onAnalyzeVoteData()
     }
     
     analysis += "\n投票趋势（前20张选票）：\n";
-    for (size_t i = 0; i < std::min(20UL, history.size()); i++) {
+    for (size_t i = 0; i < std::min<size_t>(20, history.size()); i++) {
         analysis += QString::number(history[i]) + " ";
         if ((i + 1) % 10 == 0) analysis += "\n";
     }
