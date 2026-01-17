@@ -18,6 +18,16 @@
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent),
       electionSystem(new ElectionSystem()),
+      rootStack(nullptr),
+      roleSelectionWidget(nullptr),
+      voterWidget(nullptr),
+      adminWidget(nullptr),
+      mainTabWidget(nullptr),
+      voterCandidateTable(nullptr),
+      voterEmptyLabel(nullptr),
+      voterVoteBtn(nullptr),
+      voterRefreshBtn(nullptr),
+      voterViewResultBtn(nullptr),
       candidateEmptyLabel(nullptr),
       fontDownBtn(nullptr),
       fontResetBtn(nullptr),
@@ -30,6 +40,7 @@ MainWindow::MainWindow(QWidget *parent)
     resize(1200, 800);
     
     createMenus();
+    createToolBars();
     createStatusBar();
     createCentralWidget();
     applyGlobalStyle();
@@ -80,17 +91,22 @@ void MainWindow::createToolBars()
 {
     mainToolBar = addToolBar("主工具栏");
     mainToolBar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    
+
     QAction *addCandidateAction = mainToolBar->addAction("添加候选人");
     connect(addCandidateAction, &QAction::triggered, this, &MainWindow::onAddCandidate);
-    
+
     QAction *voteAction = mainToolBar->addAction("投票");
     connect(voteAction, &QAction::triggered, this, &MainWindow::onSingleVote);
-    
+
     mainToolBar->addSeparator();
-    
+
     QAction *resultAction = mainToolBar->addAction("查看结果");
     connect(resultAction, &QAction::triggered, this, &MainWindow::onShowElectionResult);
+
+    QAction *backAction = mainToolBar->addAction("返回入口");
+    connect(backAction, &QAction::triggered, this, &MainWindow::onBackToRoleSelection);
+
+    mainToolBar->setVisible(false);
 }
 
 void MainWindow::createStatusBar()
@@ -115,15 +131,162 @@ void MainWindow::createStatusBar()
 
 void MainWindow::createCentralWidget()
 {
-    mainTabWidget = new QTabWidget(this);
-    setCentralWidget(mainTabWidget);
-    
+    rootStack = new QStackedWidget(this);
+    setCentralWidget(rootStack);
+
+    createRoleSelectionWidget();
+    createVoterWidget();
+    createAdminWidget();
+
+    rootStack->setCurrentWidget(roleSelectionWidget);
+
+    // 默认先隐藏工具栏：投票端不需要，管理员端进入后再显示
+    if (mainToolBar) {
+        mainToolBar->setVisible(false);
+    }
+}
+
+void MainWindow::createRoleSelectionWidget()
+{
+    roleSelectionWidget = new QWidget();
+    QVBoxLayout *layout = new QVBoxLayout(roleSelectionWidget);
+    layout->setContentsMargins(48, 48, 48, 48);
+
+    QLabel *title = new QLabel("投票选举系统");
+    title->setAlignment(Qt::AlignCenter);
+    title->setStyleSheet("font-size: 28px; font-weight: 700; color: #303133;");
+
+    QLabel *desc = new QLabel("请选择入口：投票端用于参与投票与查看结果；管理员端用于候选人管理、投票维护与导出统计。\n\n提示：如果还没有候选人，请先进入管理员端加载示例或导入候选人数据。 ");
+    desc->setWordWrap(true);
+    desc->setAlignment(Qt::AlignCenter);
+    desc->setStyleSheet("color: #606266; font-size: 14px;");
+
+    QPushButton *voterBtn = new QPushButton("进入投票");
+    voterBtn->setProperty("btnRole", "primary");
+    voterBtn->setMinimumHeight(40);
+
+    QPushButton *adminBtn = new QPushButton("进入管理员后台");
+    adminBtn->setProperty("btnRole", "secondary");
+    adminBtn->setMinimumHeight(40);
+
+    QHBoxLayout *btnRow = new QHBoxLayout();
+    btnRow->addStretch();
+    btnRow->addWidget(voterBtn);
+    btnRow->addSpacing(16);
+    btnRow->addWidget(adminBtn);
+    btnRow->addStretch();
+
+    layout->addStretch();
+    layout->addWidget(title);
+    layout->addSpacing(12);
+    layout->addWidget(desc);
+    layout->addSpacing(24);
+    layout->addLayout(btnRow);
+    layout->addStretch();
+
+    connect(voterBtn, &QPushButton::clicked, this, &MainWindow::onEnterVoterMode);
+    connect(adminBtn, &QPushButton::clicked, this, &MainWindow::onEnterAdminMode);
+
+    rootStack->addWidget(roleSelectionWidget);
+}
+
+void MainWindow::createVoterWidget()
+{
+    voterWidget = new QWidget();
+    QVBoxLayout *mainLayout = new QVBoxLayout(voterWidget);
+
+    QHBoxLayout *topBar = new QHBoxLayout();
+    QPushButton *backBtn = new QPushButton("返回入口");
+    backBtn->setProperty("btnRole", "neutral");
+    QLabel *tip = new QLabel("请选择候选人并投票");
+    tip->setStyleSheet("font-size: 14px; color: #606266;");
+    topBar->addWidget(backBtn);
+    topBar->addSpacing(12);
+    topBar->addWidget(tip);
+    topBar->addStretch();
+
+    voterRefreshBtn = new QPushButton("刷新列表");
+    voterRefreshBtn->setProperty("btnRole", "neutral");
+    voterViewResultBtn = new QPushButton("查看结果");
+    voterViewResultBtn->setProperty("btnRole", "secondary");
+    topBar->addWidget(voterRefreshBtn);
+    topBar->addSpacing(8);
+    topBar->addWidget(voterViewResultBtn);
+
+    QGroupBox *tableGroup = new QGroupBox("候选人列表");
+    QVBoxLayout *tableLayout = new QVBoxLayout(tableGroup);
+
+    QWidget *tableContainer = new QWidget();
+    QStackedLayout *stackLayout = new QStackedLayout(tableContainer);
+
+    voterCandidateTable = new QTableWidget();
+    voterCandidateTable->setColumnCount(4);
+    voterCandidateTable->setHorizontalHeaderLabels(QStringList() << "编号" << "姓名" << "所属单位" << "得票数");
+    voterCandidateTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    voterCandidateTable->setSelectionMode(QAbstractItemView::SingleSelection);
+    voterCandidateTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    voterCandidateTable->horizontalHeader()->setStretchLastSection(true);
+    voterCandidateTable->setAlternatingRowColors(true);
+
+    voterEmptyLabel = new QLabel("暂无候选人数据\n请联系管理员添加候选人或加载示例数据");
+    voterEmptyLabel->setAlignment(Qt::AlignCenter);
+    voterEmptyLabel->setStyleSheet("color: #999999; font-size: 14px;");
+
+    stackLayout->addWidget(voterCandidateTable);
+    stackLayout->addWidget(voterEmptyLabel);
+
+    tableLayout->addWidget(tableContainer);
+
+    QHBoxLayout *bottomBar = new QHBoxLayout();
+    voterVoteBtn = new QPushButton("投票");
+    voterVoteBtn->setProperty("btnRole", "primary");
+    voterVoteBtn->setMinimumWidth(120);
+    bottomBar->addStretch();
+    bottomBar->addWidget(voterVoteBtn);
+
+    mainLayout->addLayout(topBar);
+    mainLayout->addWidget(tableGroup);
+    mainLayout->addLayout(bottomBar);
+
+    connect(backBtn, &QPushButton::clicked, this, &MainWindow::onBackToRoleSelection);
+    connect(voterRefreshBtn, &QPushButton::clicked, this, &MainWindow::onVoterRefreshCandidates);
+    connect(voterVoteBtn, &QPushButton::clicked, this, &MainWindow::onVoterVote);
+    connect(voterViewResultBtn, &QPushButton::clicked, this, &MainWindow::onVoterShowResult);
+
+    rootStack->addWidget(voterWidget);
+}
+
+void MainWindow::createAdminWidget()
+{
+    adminWidget = new QWidget();
+    QVBoxLayout *layout = new QVBoxLayout(adminWidget);
+
+    QHBoxLayout *topBar = new QHBoxLayout();
+    QPushButton *backBtn = new QPushButton("返回入口");
+    backBtn->setProperty("btnRole", "neutral");
+    QLabel *tip = new QLabel("管理员后台");
+    tip->setStyleSheet("font-size: 14px; color: #606266;");
+    topBar->addWidget(backBtn);
+    topBar->addSpacing(12);
+    topBar->addWidget(tip);
+    topBar->addStretch();
+
+    mainTabWidget = new QTabWidget();
+
+    layout->addLayout(topBar);
+    layout->addWidget(mainTabWidget);
+
+    connect(backBtn, &QPushButton::clicked, this, &MainWindow::onBackToRoleSelection);
+
+    // 原有管理页：继续复用
     createCandidateManagementWidget();
     createVoteManagementWidget();
     createStatisticsWidget();
     createElectionResultWidget();
     createDataMaintenanceWidget();
     createAdvancedFeaturesWidget();
+
+    rootStack->addWidget(adminWidget);
 }
 
 void MainWindow::createCandidateManagementWidget()
@@ -1188,8 +1351,10 @@ void MainWindow::updateCandidateTable()
         auto *deptItem = new QTableWidgetItem(QString::fromStdString(candidates[i].department));
         auto *voteItem = new QTableWidgetItem(QString::number(candidates[i].voteCount));
 
-        idItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        voteItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        idItem->setTextAlignment(Qt::AlignCenter);
+        nameItem->setTextAlignment(Qt::AlignCenter);
+        deptItem->setTextAlignment(Qt::AlignCenter);
+        voteItem->setTextAlignment(Qt::AlignCenter);
 
         candidateTable->setItem(i, 0, idItem);
         candidateTable->setItem(i, 1, nameItem);
@@ -1228,10 +1393,11 @@ void MainWindow::updateStatisticsTable(const vector<Candidate> &candidates)
         auto *voteItem = new QTableWidgetItem(QString::number(candidates[i].voteCount));
         auto *rateItem = new QTableWidgetItem(QString::number(percentage, 'f', 2) + "%");
 
-        // 数字列右对齐
-        idItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        voteItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        rateItem->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        idItem->setTextAlignment(Qt::AlignCenter);
+        nameItem->setTextAlignment(Qt::AlignCenter);
+        deptItem->setTextAlignment(Qt::AlignCenter);
+        voteItem->setTextAlignment(Qt::AlignCenter);
+        rateItem->setTextAlignment(Qt::AlignCenter);
 
         // 非 0 得票数/得票率用更深的颜色
         if (candidates[i].voteCount > 0) {
@@ -1320,7 +1486,6 @@ void MainWindow::applyGlobalStyle()
         }
         QTabBar::tab {
             padding: 6px 14px;
-            font-size: 13px;
             color: #606266;
         }
         QTabBar::tab:selected {
@@ -1346,13 +1511,11 @@ void MainWindow::applyGlobalStyle()
             background: #f0f2f5;
             /* 和普通标签同字号，不再特意放大 */
             font-weight: normal;
-            font-size: 13px;
             color: #303133;
         }
 
         QLabel {
             color: #303133;
-            font-size: 13px;
         }
 
         QLineEdit, QComboBox, QTextEdit, QSpinBox {
@@ -1399,7 +1562,6 @@ void MainWindow::applyGlobalStyle()
             border: none;
             border-right: 1px solid #e4e7ed;
             font-weight: 600;
-            font-size: 13px;
         }
 
         QListWidget {
@@ -1493,7 +1655,6 @@ void MainWindow::applyGlobalStyle()
             background: #f7f7f7;
             border-color: #e4e7ed;
             color: #606266;
-            font-size: 13px;
         }
     )";
 
@@ -1504,20 +1665,49 @@ void MainWindow::applyFontScale()
 {
     int pointSize = baseFontPointSize + currentFontDelta;
     if (pointSize < 10) pointSize = 10;
-    if (pointSize > 22) pointSize = 22;
+    if (pointSize > 40) pointSize = 40;
 
     QFont f = QApplication::font();
     f.setPointSize(pointSize);
     QApplication::setFont(f);
 
-    // 同步表格行高
-    int rowH = pointSize + 10;
-    auto adjustTable = [rowH](QTableWidget *table) {
+    // 重新应用样式（避免某些控件缓存旧字体）
+    this->setStyleSheet(this->styleSheet());
+
+    // 同步表格行高/列宽，避免字号变大后被截断
+    int rowH = pointSize + 12;
+    int minColW = pointSize * 6; // 大致按字符宽度估算
+
+    auto adjustTable = [rowH, minColW](QTableWidget *table) {
         if (!table) return;
+
         table->verticalHeader()->setDefaultSectionSize(rowH);
+
+        auto *hh = table->horizontalHeader();
+        if (hh) {
+            hh->setSectionResizeMode(QHeaderView::Interactive);
+            hh->setMinimumSectionSize(minColW);
+            hh->setDefaultAlignment(Qt::AlignCenter);
+        }
+
+        // 先根据内容自适应，再保证最小列宽
+        table->resizeColumnsToContents();
+        for (int col = 0; col < table->columnCount(); ++col) {
+            int w = table->columnWidth(col);
+            if (w < minColW) {
+                table->setColumnWidth(col, minColW);
+            }
+        }
+
+        // 最后一列拉伸填充剩余空间（避免窗口很宽时留白）
+        if (hh) {
+            hh->setStretchLastSection(true);
+        }
     };
+
     adjustTable(candidateTable);
     adjustTable(statisticsTable);
+    adjustTable(voterCandidateTable);
 }
 
 bool MainWindow::validateInput(const QString &text, bool isID)
@@ -1596,9 +1786,155 @@ void MainWindow::onLoadSampleCandidates()
     }
     
     updateCandidateTable();
+    updateVoterCandidateTable();
     updateStatisticsTable();
     onShowSummary();
     onShowElectionResult();
     statusLabel->setText("已加载示例候选人名单");
 }
 
+void MainWindow::onEnterVoterMode()
+{
+    if (rootStack && voterWidget) {
+        rootStack->setCurrentWidget(voterWidget);
+    }
+    if (mainToolBar) {
+        mainToolBar->setVisible(false);
+    }
+    updateVoterCandidateTable();
+    statusLabel->setText("投票端");
+}
+
+void MainWindow::onEnterAdminMode()
+{
+    if (rootStack && adminWidget) {
+        rootStack->setCurrentWidget(adminWidget);
+    }
+    if (mainToolBar) {
+        mainToolBar->setVisible(true);
+    }
+    updateCandidateTable();
+    updateStatisticsTable();
+    updateVoteHistoryList();
+    onShowSummary();
+    onShowElectionResult();
+    statusLabel->setText("管理员后台");
+}
+
+void MainWindow::onBackToRoleSelection()
+{
+    if (rootStack && roleSelectionWidget) {
+        rootStack->setCurrentWidget(roleSelectionWidget);
+    }
+    if (mainToolBar) {
+        mainToolBar->setVisible(false);
+    }
+    statusLabel->setText("就绪");
+}
+
+void MainWindow::onVoterRefreshCandidates()
+{
+    updateVoterCandidateTable();
+}
+
+void MainWindow::onVoterVote()
+{
+    if (!voterCandidateTable) {
+        return;
+    }
+
+    QList<QTableWidgetItem*> items = voterCandidateTable->selectedItems();
+    if (items.isEmpty()) {
+        showMessage("提示", "请先在列表中选择一个候选人。", true);
+        return;
+    }
+
+    int row = items[0]->row();
+    QTableWidgetItem *idItem = voterCandidateTable->item(row, 0);
+    if (!idItem) {
+        showMessage("错误", "无法读取候选人编号。", true);
+        return;
+    }
+
+    bool ok = false;
+    int candidateID = idItem->text().toInt(&ok);
+    if (!ok || candidateID <= 0) {
+        showMessage("错误", "候选人编号不合法。", true);
+        return;
+    }
+
+    Candidate *c = electionSystem->queryCandidate(candidateID);
+    QString name = c ? QString::fromStdString(c->name) : QString::number(candidateID);
+    QString dept = c ? QString::fromStdString(c->department) : QString();
+
+    QString confirmText = QString("确认投票给以下候选人吗？\n\n编号：%1\n姓名：%2\n所属单位：%3")
+                          .arg(candidateID)
+                          .arg(name)
+                          .arg(dept.isEmpty() ? "-" : dept);
+
+    int ret = QMessageBox::question(this, "确认投票", confirmText, QMessageBox::Yes | QMessageBox::No);
+    if (ret != QMessageBox::Yes) {
+        return;
+    }
+
+    if (electionSystem->castVote(candidateID)) {
+        showMessage("成功", "投票成功！");
+        updateVoterCandidateTable();
+        updateCandidateTable();
+        updateStatisticsTable();
+        onShowSummary();
+        onShowElectionResult();
+        statusLabel->setText(QString("已投票：%1").arg(candidateID));
+    } else {
+        showMessage("错误", "投票失败！候选人不存在。", true);
+    }
+}
+
+void MainWindow::onVoterShowResult()
+{
+    // 投票端查看结果：直接跳转到管理员后台的“选举结果”页（只读展示）
+    onEnterAdminMode();
+    if (mainTabWidget) {
+        // 选举结果页是第 3 个 Tab（0-based: 0候选人 1投票 2统计 3结果）
+        mainTabWidget->setCurrentIndex(3);
+    }
+}
+
+void MainWindow::updateVoterCandidateTable()
+{
+    if (!voterCandidateTable) {
+        return;
+    }
+
+    const vector<Candidate> &candidates = electionSystem->getAllCandidates();
+    voterCandidateTable->setRowCount(static_cast<int>(candidates.size()));
+
+    for (size_t i = 0; i < candidates.size(); i++) {
+        auto *idItem   = new QTableWidgetItem(QString::number(candidates[i].id));
+        auto *nameItem = new QTableWidgetItem(QString::fromStdString(candidates[i].name));
+        auto *deptItem = new QTableWidgetItem(QString::fromStdString(candidates[i].department));
+        auto *voteItem = new QTableWidgetItem(QString::number(candidates[i].voteCount));
+
+        idItem->setTextAlignment(Qt::AlignCenter);
+        nameItem->setTextAlignment(Qt::AlignCenter);
+        deptItem->setTextAlignment(Qt::AlignCenter);
+        voteItem->setTextAlignment(Qt::AlignCenter);
+
+        voterCandidateTable->setItem(static_cast<int>(i), 0, idItem);
+        voterCandidateTable->setItem(static_cast<int>(i), 1, nameItem);
+        voterCandidateTable->setItem(static_cast<int>(i), 2, deptItem);
+        voterCandidateTable->setItem(static_cast<int>(i), 3, voteItem);
+    }
+
+    voterCandidateTable->resizeColumnsToContents();
+
+    if (voterEmptyLabel) {
+        bool hasData = !candidates.empty();
+        voterCandidateTable->parentWidget()->setProperty("currentIndex", hasData ? 0 : 1);
+        voterEmptyLabel->setVisible(!hasData);
+    }
+
+    if (voterVoteBtn) {
+        voterVoteBtn->setEnabled(!candidates.empty());
+    }
+}

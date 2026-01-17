@@ -23,6 +23,7 @@
 #include <QGroupBox>
 #include <QComboBox>
 #include <QTabWidget>
+#include <QStackedWidget>
 #include <QSplitter>
 #include <QListWidget>
 #include <QSpinBox>
@@ -61,6 +62,16 @@ public:
     ~MainWindow();
 
 private slots:
+    // 角色入口
+    void onEnterVoterMode();
+    void onEnterAdminMode();
+    void onBackToRoleSelection();
+
+    // 投票端
+    void onVoterRefreshCandidates();
+    void onVoterVote();
+    void onVoterShowResult();
+
     // 视图与字体
     void onIncreaseFont();
     void onDecreaseFont();
@@ -115,7 +126,14 @@ private:
     void createMenus();
     void createToolBars();
     void createStatusBar();
+
+    // 主容器：角色选择 / 投票端 / 管理端
     void createCentralWidget();
+    void createRoleSelectionWidget();
+    void createVoterWidget();
+    void createAdminWidget();
+
+    // 管理端子页面（原有Tab页，保持不变）
     void createCandidateManagementWidget();
     void createVoteManagementWidget();
     void createStatisticsWidget();
@@ -133,11 +151,19 @@ private:
     void clearInputFields();
     void applyGlobalStyle();
     void applyFontScale();
+
+    void updateVoterCandidateTable();
     
     // 核心系统
     ElectionSystem *electionSystem;
     
-    // 主界面组件
+    // 主界面容器：角色选择 / 投票端 / 管理端
+    QStackedWidget *rootStack;
+    QWidget *roleSelectionWidget;
+    QWidget *voterWidget;
+    QWidget *adminWidget;
+
+    // 管理端组件（原有Tab容器）
     QTabWidget *mainTabWidget;
     
     // 候选人管理界面
@@ -155,6 +181,13 @@ private:
     QSpinBox *undoCountSpin;
     QPushButton *undoMultipleVotesBtn;
     
+    // 投票端界面
+    QTableWidget *voterCandidateTable;
+    QLabel *voterEmptyLabel;
+    QPushButton *voterVoteBtn;
+    QPushButton *voterRefreshBtn;
+    QPushButton *voterViewResultBtn;
+
     // 投票管理界面
     QWidget *voteWidget;
     QSpinBox *voteCandidateIdSpin;

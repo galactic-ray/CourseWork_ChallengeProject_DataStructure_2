@@ -23,9 +23,9 @@ int main(int argc, char *argv[])
 
     /* ===== 4. 统一字体（解决 Windows / Ubuntu 差异的关键） ===== */
 #ifdef Q_OS_WIN
-    QFont appFont("Microsoft YaHei", 10);
+    QFont appFont("Microsoft YaHei", 20);
 #else   // Linux / Ubuntu
-    QFont appFont("Noto Sans CJK SC", 10);
+    QFont appFont("Noto Sans CJK SC", 20);
 #endif
     app.setFont(appFont);
 
