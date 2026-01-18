@@ -12,8 +12,22 @@
 #include <QIntValidator>
 #include <QElapsedTimer>
 #include <QStackedLayout>
+#include <QInputDialog>
 #include <sstream>
 #include <iomanip>
+
+static int getSelectedTopicIdFromTable(QTableWidget *table) {
+    if (!table) return -1;
+    QList<QTableWidgetItem*> items = table->selectedItems();
+    if (items.isEmpty()) return -1;
+    int row = items[0]->row();
+    auto *idItem = table->item(row, 0);
+    if (!idItem) return -1;
+    bool ok = false;
+    int id = idItem->text().toInt(&ok);
+    return ok ? id : -1;
+}
+
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent),
@@ -23,11 +37,15 @@ MainWindow::MainWindow(QWidget *parent)
       voterWidget(nullptr),
       adminWidget(nullptr),
       mainTabWidget(nullptr),
-      voterCandidateTable(nullptr),
+      voterTopicComboBox(nullptr),
+      voterTopicOptionTable(nullptr),
       voterEmptyLabel(nullptr),
       voterVoteBtn(nullptr),
       voterRefreshBtn(nullptr),
       voterViewResultBtn(nullptr),
+      adminModeComboBox(nullptr),
+      adminTopicComboBox(nullptr),
+      topicTableWidget(nullptr),
       candidateEmptyLabel(nullptr),
       fontDownBtn(nullptr),
       fontResetBtn(nullptr),
@@ -89,23 +107,8 @@ void MainWindow::createMenus()
 
 void MainWindow::createToolBars()
 {
+    // 候选人系统已移除：不再提供顶部工具栏快捷入口，避免误触导致崩溃
     mainToolBar = addToolBar("主工具栏");
-    mainToolBar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-
-    QAction *addCandidateAction = mainToolBar->addAction("添加候选人");
-    connect(addCandidateAction, &QAction::triggered, this, &MainWindow::onAddCandidate);
-
-    QAction *voteAction = mainToolBar->addAction("投票");
-    connect(voteAction, &QAction::triggered, this, &MainWindow::onSingleVote);
-
-    mainToolBar->addSeparator();
-
-    QAction *resultAction = mainToolBar->addAction("查看结果");
-    connect(resultAction, &QAction::triggered, this, &MainWindow::onShowElectionResult);
-
-    QAction *backAction = mainToolBar->addAction("返回入口");
-    connect(backAction, &QAction::triggered, this, &MainWindow::onBackToRoleSelection);
-
     mainToolBar->setVisible(false);
 }
 
@@ -198,14 +201,14 @@ void MainWindow::createVoterWidget()
     QHBoxLayout *topBar = new QHBoxLayout();
     QPushButton *backBtn = new QPushButton("返回入口");
     backBtn->setProperty("btnRole", "neutral");
-    QLabel *tip = new QLabel("请选择候选人并投票");
+    QLabel *tip = new QLabel("请选择话题与选项并投票");
     tip->setStyleSheet("font-size: 14px; color: #606266;");
     topBar->addWidget(backBtn);
     topBar->addSpacing(12);
     topBar->addWidget(tip);
     topBar->addStretch();
 
-    voterRefreshBtn = new QPushButton("刷新列表");
+    voterRefreshBtn = new QPushButton("刷新话题");
     voterRefreshBtn->setProperty("btnRole", "neutral");
     voterViewResultBtn = new QPushButton("查看结果");
     voterViewResultBtn->setProperty("btnRole", "secondary");
@@ -213,26 +216,34 @@ void MainWindow::createVoterWidget()
     topBar->addSpacing(8);
     topBar->addWidget(voterViewResultBtn);
 
-    QGroupBox *tableGroup = new QGroupBox("候选人列表");
+    QGroupBox *tableGroup = new QGroupBox("话题投票");
     QVBoxLayout *tableLayout = new QVBoxLayout(tableGroup);
+
+    QHBoxLayout *topicRow = new QHBoxLayout();
+    topicRow->addWidget(new QLabel("话题:"));
+    voterTopicComboBox = new QComboBox();
+    voterTopicComboBox->setMinimumWidth(240);
+    topicRow->addWidget(voterTopicComboBox);
+    topicRow->addStretch();
+    tableLayout->addLayout(topicRow);
 
     QWidget *tableContainer = new QWidget();
     QStackedLayout *stackLayout = new QStackedLayout(tableContainer);
 
-    voterCandidateTable = new QTableWidget();
-    voterCandidateTable->setColumnCount(4);
-    voterCandidateTable->setHorizontalHeaderLabels(QStringList() << "编号" << "姓名" << "所属单位" << "得票数");
-    voterCandidateTable->setSelectionBehavior(QAbstractItemView::SelectRows);
-    voterCandidateTable->setSelectionMode(QAbstractItemView::SingleSelection);
-    voterCandidateTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    voterCandidateTable->horizontalHeader()->setStretchLastSection(true);
-    voterCandidateTable->setAlternatingRowColors(true);
+    voterTopicOptionTable = new QTableWidget();
+    voterTopicOptionTable->setColumnCount(4);
+    voterTopicOptionTable->setHorizontalHeaderLabels(QStringList() << "选项ID" << "选项" << "票数" << "票率");
+    voterTopicOptionTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    voterTopicOptionTable->setSelectionMode(QAbstractItemView::SingleSelection);
+    voterTopicOptionTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    voterTopicOptionTable->horizontalHeader()->setStretchLastSection(true);
+    voterTopicOptionTable->setAlternatingRowColors(true);
 
-    voterEmptyLabel = new QLabel("暂无候选人数据\n请联系管理员添加候选人或加载示例数据");
+    voterEmptyLabel = new QLabel("暂无投票话题\n请联系管理员在后台发布投票话题");
     voterEmptyLabel->setAlignment(Qt::AlignCenter);
     voterEmptyLabel->setStyleSheet("color: #999999; font-size: 14px;");
 
-    stackLayout->addWidget(voterCandidateTable);
+    stackLayout->addWidget(voterTopicOptionTable);
     stackLayout->addWidget(voterEmptyLabel);
 
     tableLayout->addWidget(tableContainer);
@@ -252,6 +263,10 @@ void MainWindow::createVoterWidget()
     connect(voterRefreshBtn, &QPushButton::clicked, this, &MainWindow::onVoterRefreshCandidates);
     connect(voterVoteBtn, &QPushButton::clicked, this, &MainWindow::onVoterVote);
     connect(voterViewResultBtn, &QPushButton::clicked, this, &MainWindow::onVoterShowResult);
+    if (voterTopicComboBox) {
+        connect(voterTopicComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
+                this, [this](int) { updateVoterTopicOptionTable(); });
+    }
 
     rootStack->addWidget(voterWidget);
 }
@@ -279,8 +294,8 @@ void MainWindow::createAdminWidget()
     connect(backBtn, &QPushButton::clicked, this, &MainWindow::onBackToRoleSelection);
 
     // 原有管理页：继续复用
-    createCandidateManagementWidget();
-    createVoteManagementWidget();
+    // 候选人管理/候选人投票功能已移除：仅保留话题投票后台
+    createTopicManagementWidget();
     createStatisticsWidget();
     createElectionResultWidget();
     createDataMaintenanceWidget();
@@ -467,6 +482,16 @@ void MainWindow::createStatisticsWidget()
     // 排序工具条（右上角紧凑布局）
     QHBoxLayout *controlLayout = new QHBoxLayout();
     controlLayout->addStretch();
+    controlLayout->addWidget(new QLabel("模式:"));
+    adminModeComboBox = new QComboBox();
+    adminModeComboBox->addItems(QStringList() << "话题");
+    adminModeComboBox->setFixedWidth(90);
+    controlLayout->addWidget(adminModeComboBox);
+
+    controlLayout->addWidget(new QLabel("话题:"));
+    adminTopicComboBox = new QComboBox();
+    adminTopicComboBox->setMinimumWidth(220);
+    controlLayout->addWidget(adminTopicComboBox);
     QLabel *sortLabel = new QLabel("排序:");
     controlLayout->addWidget(sortLabel);
     sortComboBox = new QComboBox();
@@ -493,6 +518,19 @@ void MainWindow::createStatisticsWidget()
     
     // 连接信号
     connect(sortBtn, &QPushButton::clicked, this, &MainWindow::onSortCandidates);
+
+    if (adminModeComboBox) {
+        connect(adminModeComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int){
+            // 切换模式后刷新话题列表与视图
+            refreshAdminTopicSelectors();
+            refreshAdminViews();
+        });
+    }
+    if (adminTopicComboBox) {
+        connect(adminTopicComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int){
+            refreshAdminViews();
+        });
+    }
     
     mainTabWidget->addTab(statisticsWidget, "查询统计");
 }
@@ -530,11 +568,13 @@ void MainWindow::createDataMaintenanceWidget()
     QGroupBox *operationGroup = new QGroupBox("数据处理");
     QGridLayout *gridLayout = new QGridLayout(operationGroup);
     
-    saveCandidatesBtn = new QPushButton("保存候选人数据");
-    loadCandidatesBtn = new QPushButton("加载候选人数据");
-    saveVotesBtn = new QPushButton("保存投票数据");
-    loadVotesBtn = new QPushButton("加载投票数据");
-    loadSampleCandidatesBtn = new QPushButton("加载示例候选人");
+    saveCandidatesBtn = new QPushButton("导出话题数据");
+    loadCandidatesBtn = new QPushButton("导入话题数据");
+    saveVotesBtn = new QPushButton("导出投票记录");
+    loadVotesBtn = new QPushButton("导入投票记录");
+    saveVotesBtn->setVisible(false);
+    loadVotesBtn->setVisible(false);
+    loadSampleCandidatesBtn = new QPushButton("加载示例话题");
     clearAllBtn = new QPushButton("清空所有数据");
     
     gridLayout->addWidget(saveCandidatesBtn, 0, 0);
@@ -563,6 +603,215 @@ void MainWindow::createDataMaintenanceWidget()
     connect(clearAllBtn, &QPushButton::clicked, this, &MainWindow::onClearAll);
     
     mainTabWidget->addTab(maintenanceWidget, "数据维护");
+}
+
+void MainWindow::createTopicManagementWidget()
+{
+    QWidget *topicWidget = new QWidget();
+    QVBoxLayout *mainLayout = new QVBoxLayout(topicWidget);
+
+    QGroupBox *inputGroup = new QGroupBox("发布投票话题");
+    QFormLayout *formLayout = new QFormLayout(inputGroup);
+
+    static QLineEdit *topicTitleEdit = nullptr;
+    static QPlainTextEdit *topicDescEdit = nullptr;
+    static QPlainTextEdit *topicOptionsEdit = nullptr;
+    static QSpinBox *topicVotesPerVoterSpin = nullptr;
+    static QTableWidget *topicTable = nullptr;
+    static QPushButton *createTopicBtn = nullptr;
+    static QPushButton *deleteTopicBtn = nullptr;
+    static QPushButton *viewTopicDetailBtn = nullptr;
+    static QLineEdit *undoVoterIdEdit = nullptr;
+    static QPushButton *undoTopicVoteBtn = nullptr;
+    static QPushButton *exportVoterRecordsBtn = nullptr;
+
+    topicTitleEdit = new QLineEdit();
+    topicTitleEdit->setMaxLength(100);
+    topicTitleEdit->setPlaceholderText("例如：你最喜欢的编程语言？");
+    formLayout->addRow("标题(&T):", topicTitleEdit);
+
+    topicDescEdit = new QPlainTextEdit();
+    topicDescEdit->setPlaceholderText("可选：话题描述");
+    topicDescEdit->setMaximumHeight(80);
+    formLayout->addRow("描述(&D):", topicDescEdit);
+
+    topicOptionsEdit = new QPlainTextEdit();
+    topicOptionsEdit->setPlaceholderText("每行一个选项，例如：\nC++\nPython\nJava");
+    topicOptionsEdit->setMaximumHeight(120);
+    formLayout->addRow("选项(&O):", topicOptionsEdit);
+
+    topicVotesPerVoterSpin = new QSpinBox();
+    topicVotesPerVoterSpin->setMinimum(1);
+    topicVotesPerVoterSpin->setMaximum(1000);
+    topicVotesPerVoterSpin->setValue(1);
+    formLayout->addRow("每人可投票数(N):", topicVotesPerVoterSpin);
+
+    QHBoxLayout *btnRow = new QHBoxLayout();
+    createTopicBtn = new QPushButton("发布");
+    deleteTopicBtn = new QPushButton("删除");
+    viewTopicDetailBtn = new QPushButton("查看详情");
+    exportVoterRecordsBtn = new QPushButton("导出投票记录");
+    btnRow->addWidget(createTopicBtn);
+    btnRow->addWidget(deleteTopicBtn);
+    btnRow->addWidget(viewTopicDetailBtn);
+    btnRow->addWidget(exportVoterRecordsBtn);
+    btnRow->addStretch();
+    formLayout->addRow(btnRow);
+
+    undoVoterIdEdit = new QLineEdit();
+    undoVoterIdEdit->setPlaceholderText("可选：撤销时显示被撤销的投票人ID（无需输入）");
+    undoVoterIdEdit->setReadOnly(true);
+    formLayout->addRow("最近撤销投票人ID:", undoVoterIdEdit);
+
+    undoTopicVoteBtn = new QPushButton("撤销最近一次投票(话题)");
+    undoTopicVoteBtn->setProperty("btnRole", "danger");
+    formLayout->addRow(undoTopicVoteBtn);
+
+    QGroupBox *tableGroup = new QGroupBox("话题列表");
+    QVBoxLayout *tableLayout = new QVBoxLayout(tableGroup);
+
+    topicTable = new QTableWidget();
+    topicTableWidget = topicTable;
+    topicTable->setColumnCount(4);
+    topicTable->setHorizontalHeaderLabels(QStringList() << "话题ID" << "标题" << "创建时间" << "总票数");
+    topicTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    topicTable->setSelectionMode(QAbstractItemView::SingleSelection);
+    topicTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    topicTable->horizontalHeader()->setStretchLastSection(true);
+    topicTable->setAlternatingRowColors(true);
+    tableLayout->addWidget(topicTable);
+
+    mainLayout->addWidget(inputGroup);
+    mainLayout->addWidget(tableGroup);
+    auto getSelectedTopicId = [topicTable]() -> int {
+        QList<QTableWidgetItem*> items = topicTable->selectedItems();
+        if (items.isEmpty()) return -1;
+        int row = items[0]->row();
+        auto *idItem = topicTable->item(row, 0);
+        if (!idItem) return -1;
+        bool ok = false;
+        int id = idItem->text().toInt(&ok);
+        return ok ? id : -1;
+    };
+
+    auto updateButtons = [=]() {
+        int tid = getSelectedTopicId();
+        deleteTopicBtn->setEnabled(tid > 0);
+        viewTopicDetailBtn->setEnabled(tid > 0);
+    };
+
+    connect(topicTable, &QTableWidget::itemSelectionChanged, this, [=]() {
+        updateButtons();
+    });
+
+    connect(createTopicBtn, &QPushButton::clicked, this, [=]() {
+        QString title = topicTitleEdit->text().trimmed();
+        QString desc = topicDescEdit->toPlainText().trimmed();
+        QString optionsText = topicOptionsEdit->toPlainText();
+
+        QStringList lines = optionsText.split(QRegExp("[\r\n]+"), QString::SkipEmptyParts);
+        vector<string> optionTexts;
+        for (const auto &line : lines) {
+            QString t = line.trimmed();
+            if (!t.isEmpty()) optionTexts.push_back(t.toStdString());
+        }
+
+                int votesPerVoter = topicVotesPerVoterSpin ? topicVotesPerVoterSpin->value() : 1;
+
+        int topicId = electionSystem->createTopic(title.toStdString(), desc.toStdString(), optionTexts, votesPerVoter);
+        if (topicId <= 0) {
+            showMessage("错误", "发布失败：标题不能为空、至少需要2个有效选项，且每人可投票数N必须在[1, 选项数]范围内。", true);
+            return;
+        }
+
+        showMessage("成功", QString("发布成功：话题ID %1").arg(topicId));
+        topicTitleEdit->clear();
+        topicDescEdit->clear();
+        topicOptionsEdit->clear();
+
+        updateTopicTable();
+        refreshTopicComboBox();
+        refreshAdminTopicSelectors();
+        refreshAdminViews();
+        updateVoterTopicOptionTable();
+    });
+
+    connect(deleteTopicBtn, &QPushButton::clicked, this, [=]() {
+        int topicId = getSelectedTopicId();
+        if (topicId <= 0) return;
+
+        int ret = QMessageBox::question(this, "确认删除", QString("确认删除话题 %1 吗？\n\n删除后无法恢复。").arg(topicId), QMessageBox::Yes | QMessageBox::No);
+        if (ret != QMessageBox::Yes) return;
+
+        if (electionSystem->deleteTopic(topicId)) {
+            showMessage("成功", "删除成功。");
+            updateTopicTable();
+            refreshTopicComboBox();
+            refreshAdminTopicSelectors();
+            refreshAdminViews();
+            updateVoterTopicOptionTable();
+        } else {
+            showMessage("错误", "删除失败：话题不存在。", true);
+        }
+    });
+
+    if (exportVoterRecordsBtn) {
+        connect(exportVoterRecordsBtn, &QPushButton::clicked, this, [=]() {
+            QString filename = QFileDialog::getSaveFileName(this, "导出投票记录", "topic_vote_records.csv", "CSV 文件 (*.csv);;文本文件 (*.txt);;所有文件 (*.*)");
+            if (filename.isEmpty()) return;
+            QFile file(filename);
+            if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+                showMessage("错误", "无法写入文件。", true);
+                return;
+            }
+            QTextStream out(&file);
+            out << "topicId,voterId,optionId,votedAt" << "\n";
+            const auto &hist = electionSystem->getTopicVoteHistory();
+            for (const auto &rec : hist) {
+                out << rec.topicId << "," << QString::fromStdString(rec.voterId) << "," << rec.optionId << "," << static_cast<qint64>(rec.votedAt) << "\n";
+            }
+            file.close();
+            showMessage("成功", QString("已导出投票记录：%1 条\n保存到：%2").arg(hist.size()).arg(filename));
+            if (maintenanceLog) {
+                maintenanceLog->append(QString("[%1] 导出投票记录: %2 (%3条)")
+                                       .arg(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss"))
+                                       .arg(filename)
+                                       .arg(hist.size()));
+            }
+        });
+    }
+
+    connect(viewTopicDetailBtn, &QPushButton::clicked, this, [=]() {
+        int topicId = getSelectedTopicId();
+        if (topicId <= 0) return;
+        showTopicResultDialog(topicId);
+    });
+
+    if (undoTopicVoteBtn) {
+        connect(undoTopicVoteBtn, &QPushButton::clicked, this, [=]() {
+            int ret = QMessageBox::question(this, "确认撤销", "确认撤销最近一次前端话题投票吗？", QMessageBox::Yes | QMessageBox::No);
+            if (ret != QMessageBox::Yes) return;
+            TopicVoteRecord rec;
+            if (electionSystem->undoLastTopicVote(&rec)) {
+                if (undoVoterIdEdit) undoVoterIdEdit->setText(QString::fromStdString(rec.voterId));
+                showMessage("成功", QString("已撤销：话题%1 选项%2 投票人%3").arg(rec.topicId).arg(rec.optionId).arg(QString::fromStdString(rec.voterId)));
+                updateTopicTable();
+                refreshTopicComboBox();
+                refreshAdminTopicSelectors();
+                refreshAdminViews();
+                updateVoterTopicOptionTable();
+            } else {
+                showMessage("提示", "没有可撤销的话题投票记录。", true);
+            }
+        });
+    }
+
+    deleteTopicBtn->setEnabled(false);
+    viewTopicDetailBtn->setEnabled(false);
+
+    mainTabWidget->addTab(topicWidget, "话题管理");
+
+    updateTopicTable();
 }
 
 void MainWindow::createAdvancedFeaturesWidget()
@@ -597,6 +846,526 @@ void MainWindow::createAdvancedFeaturesWidget()
     connect(analyzePerformanceBtn, &QPushButton::clicked, this, &MainWindow::onAnalyzePerformance);
     
     mainTabWidget->addTab(advancedWidget, "高级功能");
+}
+
+
+void MainWindow::refreshAdminTopicSelectors() {
+    if (!adminTopicComboBox) return;
+
+    int currentId = -1;
+    if (adminTopicComboBox->count() > 0) {
+        bool ok = false;
+        currentId = adminTopicComboBox->currentData().toInt(&ok);
+        if (!ok) currentId = -1;
+    }
+
+    adminTopicComboBox->blockSignals(true);
+    adminTopicComboBox->clear();
+
+    const vector<VoteTopic> &topics = electionSystem->getAllTopics();
+    for (const auto &topic : topics) {
+        adminTopicComboBox->addItem(QString("[%1] %2").arg(topic.id).arg(QString::fromStdString(topic.title)), topic.id);
+    }
+
+    if (currentId > 0) {
+        int idx = adminTopicComboBox->findData(currentId);
+        if (idx >= 0) adminTopicComboBox->setCurrentIndex(idx);
+    }
+
+    adminTopicComboBox->blockSignals(false);
+
+    if (adminTopicComboBox->currentIndex() < 0 && adminTopicComboBox->count() > 0) {
+        adminTopicComboBox->setCurrentIndex(0);
+    }
+}
+
+int MainWindow::getSelectedAdminTopicId() const {
+    if (!adminTopicComboBox) return -1;
+    bool ok = false;
+    int topicId = adminTopicComboBox->currentData().toInt(&ok);
+    return (ok ? topicId : -1);
+}
+
+void MainWindow::refreshAdminViews() {
+    // 仅在管理员界面/相关控件存在时刷新
+    if (!rootStack || rootStack->currentWidget() != adminWidget) {
+        return;
+    }
+
+    // 候选人模式：复用原逻辑
+    bool isTopicMode = true;
+    if (!isTopicMode) {
+        updateStatisticsTable();
+        onShowSummary();
+        onShowElectionResult();
+        return;
+    }
+
+    updateTopicTable();
+    int topicId = getSelectedAdminTopicId();
+    updateTopicStatisticsTable(topicId);
+    updateTopicResultView(topicId);
+}
+
+void MainWindow::updateTopicStatisticsTable(int topicId) {
+    if (!statisticsTable) return;
+
+    VoteTopic *topic = electionSystem->queryTopic(topicId);
+    if (!topic) {
+        statisticsTable->setRowCount(0);
+        if (summaryText) summaryText->setHtml("<p style='color:#909399;'>暂无话题数据</p>");
+        return;
+    }
+
+    int totalVotes = electionSystem->getTopicTotalVotes(topicId);
+    statisticsTable->setColumnCount(5);
+    statisticsTable->setHorizontalHeaderLabels(QStringList() << "选项ID" << "选项" << "票数" << "票率" << "每人可投N票");
+    statisticsTable->setRowCount(static_cast<int>(topic->options.size()));
+
+    for (size_t i = 0; i < topic->options.size(); i++) {
+        const auto &opt = topic->options[i];
+        double percentage = totalVotes > 0 ? (100.0 * opt.voteCount / totalVotes) : 0.0;
+
+        auto *idItem = new QTableWidgetItem(QString::number(opt.id));
+        auto *textItem = new QTableWidgetItem(QString::fromStdString(opt.text));
+        auto *countItem = new QTableWidgetItem(QString::number(opt.voteCount));
+        auto *rateItem = new QTableWidgetItem(QString::number(percentage, 'f', 2) + "%");
+        auto *nItem = new QTableWidgetItem(QString::number(topic->votesPerVoter));
+
+        idItem->setTextAlignment(Qt::AlignCenter);
+        countItem->setTextAlignment(Qt::AlignCenter);
+        rateItem->setTextAlignment(Qt::AlignCenter);
+        nItem->setTextAlignment(Qt::AlignCenter);
+
+        statisticsTable->setItem(static_cast<int>(i), 0, idItem);
+        statisticsTable->setItem(static_cast<int>(i), 1, textItem);
+        statisticsTable->setItem(static_cast<int>(i), 2, countItem);
+        statisticsTable->setItem(static_cast<int>(i), 3, rateItem);
+        statisticsTable->setItem(static_cast<int>(i), 4, nItem);
+    }
+
+    statisticsTable->resizeColumnsToContents();
+
+    if (summaryText) {
+        QString summary = QString(
+            "<div>"
+            "<p><b>话题：</b>%1</p>"
+            "<p><b>总票数：</b>%2</p>"
+            "<p><b>选项数：</b>%3</p>"
+            "<p><b>每人可投票数(N)：</b>%4</p>"
+            "</div>")
+            .arg(QString::fromStdString(topic->title))
+            .arg(totalVotes)
+            .arg(topic->options.size())
+            .arg(topic->votesPerVoter);
+        summaryText->setHtml(summary);
+    }
+}
+
+void MainWindow::updateTopicResultView(int topicId) {
+    if (!resultText) return;
+
+    VoteTopic *topic = electionSystem->queryTopic(topicId);
+    if (!topic) {
+        resultText->setPlainText("暂无话题数据");
+        return;
+    }
+
+    int totalVotes = electionSystem->getTopicTotalVotes(topicId);
+
+    QString html;
+    html += QString("<h2>话题结果</h2>");
+    html += QString("<p><b>话题：</b>%1</p>").arg(QString::fromStdString(topic->title));
+    html += QString("<p><b>总票数：</b>%1</p>").arg(totalVotes);
+    html += QString("<p><b>每人可投票数(N)：</b>%1</p>").arg(topic->votesPerVoter);
+    // 优胜者：得票率 > 50%
+    if (totalVotes > 0) {
+        int winnerOptId = -1;
+        QString winnerOptText;
+        for (const auto &opt : topic->options) {
+            if (opt.voteCount * 2 > totalVotes) {
+                winnerOptId = opt.id;
+                winnerOptText = QString::fromStdString(opt.text);
+                break;
+            }
+        }
+        if (winnerOptId != -1) {
+            html += QString("<p style=\"color: green;\"><b>✅ 优胜者：</b>[%1] %2（得票率 > 50%）</p>")
+                    .arg(winnerOptId)
+                    .arg(winnerOptText.toHtmlEscaped());
+        } else {
+            html += "<p style=\"color:#909399;\"><b>暂无优胜者：</b>没有选项得票率超过50%。</p>";
+        }
+    } else {
+        html += "<p style=\"color:#909399;\"><b>暂无优胜者：</b>当前总票数为0。</p>";
+    }
+    html += "<hr>";
+
+    // 排序展示
+    vector<const VoteOption*> sorted;
+    for (const auto &opt : topic->options) sorted.push_back(&opt);
+    std::sort(sorted.begin(), sorted.end(), [](const VoteOption* a, const VoteOption* b){ return a->voteCount > b->voteCount; });
+
+    html += "<table border='1' cellpadding='5'>";
+    html += "<tr><th>排名</th><th>选项ID</th><th>选项</th><th>票数</th><th>票率</th></tr>";
+    for (size_t i = 0; i < sorted.size(); i++) {
+        const auto *opt = sorted[i];
+        double percentage = totalVotes > 0 ? (100.0 * opt->voteCount / totalVotes) : 0.0;
+        html += QString("<tr><td>%1</td><td>%2</td><td>%3</td><td>%4</td><td>%5%</td></tr>")
+                .arg(i+1)
+                .arg(opt->id)
+                .arg(QString::fromStdString(opt->text).toHtmlEscaped())
+                .arg(opt->voteCount)
+                .arg(percentage, 0, 'f', 2);
+    }
+    html += "</table>";
+
+    resultText->setHtml(html);
+}
+
+void MainWindow::updateTopicAnalysisView(int topicId, int actionIndex) {
+    if (!analysisText) return;
+    VoteTopic *topic = electionSystem->queryTopic(topicId);
+    if (!topic) {
+        analysisText->setPlainText("暂无话题数据");
+        return;
+    }
+
+    int totalVotes = electionSystem->getTopicTotalVotes(topicId);
+
+    if (actionIndex == 0) {
+        // 投票数据分析（按选项汇总）
+        QString txt;
+        txt += "话题投票数据分析\n";
+        txt += "═══════════════════════════════════════\n\n";
+        txt += QString("话题：%1\n").arg(QString::fromStdString(topic->title));
+        txt += QString("总票数：%1\n每人可投票数(N)：%2\n\n").arg(totalVotes).arg(topic->votesPerVoter);
+        for (const auto &opt : topic->options) {
+            txt += QString("  [%1] %2 : %3 票\n")
+                   .arg(opt.id)
+                   .arg(QString::fromStdString(opt.text))
+                   .arg(opt.voteCount);
+        }
+        analysisText->setPlainText(txt);
+        return;
+    }
+
+    if (actionIndex == 1) {
+        // 排名分析
+        vector<const VoteOption*> sorted;
+        for (const auto &opt : topic->options) sorted.push_back(&opt);
+        std::sort(sorted.begin(), sorted.end(), [](const VoteOption* a, const VoteOption* b){ return a->voteCount > b->voteCount; });
+
+        QString txt;
+        txt += "话题选项排名分析\n";
+        txt += "═══════════════════════════════════════\n\n";
+        txt += "排名\t选项ID\t票数\t票率\t选项\n";
+        txt += "────────────────────────────────────\n";
+        for (size_t i = 0; i < sorted.size(); i++) {
+            const auto *opt = sorted[i];
+            double percentage = totalVotes > 0 ? (100.0 * opt->voteCount / totalVotes) : 0.0;
+            txt += QString("%1\t%2\t%3\t%4%\t%5\n")
+                   .arg(i+1)
+                   .arg(opt->id)
+                   .arg(opt->voteCount)
+                   .arg(percentage, 0, 'f', 2)
+                   .arg(QString::fromStdString(opt->text));
+        }
+        analysisText->setPlainText(txt);
+        return;
+    }
+
+    if (actionIndex == 2) {
+        // 分布分析（条形）
+        int maxVotes = 0;
+        for (const auto &opt : topic->options) maxVotes = std::max(maxVotes, opt.voteCount);
+
+        QString txt;
+        txt += "话题得票分布分析（可视化）\n";
+        txt += "═══════════════════════════════════════\n\n";
+        for (const auto &opt : topic->options) {
+            int barLength = maxVotes > 0 ? (50 * opt.voteCount / maxVotes) : 0;
+            QString name = QString::fromStdString(opt.text);
+            name = name.leftJustified(20, ' ');
+            txt += name + " [";
+            for (int i = 0; i < barLength; i++) txt += "█";
+            for (int i = barLength; i < 50; i++) txt += " ";
+            txt += QString("] %1 票\n").arg(opt.voteCount);
+        }
+        analysisText->setPlainText(txt);
+        return;
+    }
+
+    // 性能测试（真实计时）
+    QElapsedTimer timer;
+
+    const int loopsTotal = 20000;
+    const int loopsSort = 2000;
+    const int loopsVote = 2000;
+    const int loopsUndo = 2000;
+
+    qint64 tTotalNs = 0;
+    qint64 tSortNs = 0;
+    qint64 tVoteNs = 0;
+    qint64 tUndoNs = 0;
+
+    // 1) getTopicTotalVotes
+    timer.start();
+    int sink = 0;
+    for (int i = 0; i < loopsTotal; ++i) {
+        sink += electionSystem->getTopicTotalVotes(topicId);
+    }
+    tTotalNs = timer.nsecsElapsed();
+
+    // 2) 排序（按票数）
+    timer.restart();
+    for (int i = 0; i < loopsSort; ++i) {
+        vector<const VoteOption*> sorted;
+        sorted.reserve(topic->options.size());
+        for (const auto &opt : topic->options) sorted.push_back(&opt);
+        std::sort(sorted.begin(), sorted.end(), [](const VoteOption* a, const VoteOption* b){ return a->voteCount > b->voteCount; });
+        if (!sorted.empty()) sink += sorted[0]->voteCount;
+    }
+    tSortNs = timer.nsecsElapsed();
+
+    // 3) 投票：为了不破坏现有数据，投完马上撤销
+    int optionIdForPerf = topic->options.empty() ? 1 : topic->options[0].id;
+    timer.restart();
+    int voted = 0;
+    for (int i = 0; i < loopsVote; ++i) {
+        QString vid = QString("perf_%1").arg(i);
+        if (electionSystem->castTopicVote(topicId, optionIdForPerf, vid.toStdString())) {
+            voted++;
+        }
+    }
+    tVoteNs = timer.nsecsElapsed();
+
+    // 4) 撤销最近投票
+    timer.restart();
+    int undone = 0;
+    for (int i = 0; i < loopsUndo; ++i) {
+        TopicVoteRecord rec;
+        if (electionSystem->undoLastTopicVote(&rec)) {
+            undone++;
+        } else {
+            break;
+        }
+    }
+    tUndoNs = timer.nsecsElapsed();
+
+    auto nsToMs = [](qint64 ns) { return ns / 1e6; };
+
+    QString txt;
+    txt += "话题性能统计（真实计时）\n";
+    txt += "═══════════════════════════════════════\n\n";
+    txt += QString("话题：%1\n").arg(QString::fromStdString(topic->title));
+    txt += QString("选项数：%1，当前总票数：%2\n\n").arg(topic->options.size()).arg(totalVotes);
+
+    txt += QString("1) getTopicTotalVotes 调用 %1 次：%2 ms\n").arg(loopsTotal).arg(nsToMs(tTotalNs), 0, 'f', 3);
+    txt += QString("2) 选项排序重复 %1 次：%2 ms\n").arg(loopsSort).arg(nsToMs(tSortNs), 0, 'f', 3);
+    txt += QString("3) castTopicVote 尝试 %1 次（成功 %2 次）：%3 ms\n").arg(loopsVote).arg(voted).arg(nsToMs(tVoteNs), 0, 'f', 3);
+    txt += QString("4) undoLastTopicVote 执行 %1 次（成功 %2 次）：%3 ms\n").arg(loopsUndo).arg(undone).arg(nsToMs(tUndoNs), 0, 'f', 3);
+
+    (void)sink;
+    analysisText->setPlainText(txt);
+}
+
+
+void MainWindow::updateTopicTable() {
+    if (!topicTableWidget) {
+        return;
+    }
+
+    const vector<VoteTopic> &topics = electionSystem->getAllTopics();
+    topicTableWidget->setRowCount(static_cast<int>(topics.size()));
+
+    for (size_t i = 0; i < topics.size(); i++) {
+        const auto &t = topics[i];
+        int totalVotes = electionSystem->getTopicTotalVotes(t.id);
+        QString created = t.createdAt > 0 ? QDateTime::fromSecsSinceEpoch(static_cast<qint64>(t.createdAt)).toString("yyyy-MM-dd hh:mm:ss") : "-";
+
+        auto *idItem = new QTableWidgetItem(QString::number(t.id));
+        auto *titleItem = new QTableWidgetItem(QString::fromStdString(t.title));
+        auto *createdItem = new QTableWidgetItem(created);
+        auto *totalItem = new QTableWidgetItem(QString::number(totalVotes));
+
+        idItem->setTextAlignment(Qt::AlignCenter);
+        createdItem->setTextAlignment(Qt::AlignCenter);
+        totalItem->setTextAlignment(Qt::AlignCenter);
+
+        topicTableWidget->setItem(static_cast<int>(i), 0, idItem);
+        topicTableWidget->setItem(static_cast<int>(i), 1, titleItem);
+        topicTableWidget->setItem(static_cast<int>(i), 2, createdItem);
+        topicTableWidget->setItem(static_cast<int>(i), 3, totalItem);
+    }
+
+    topicTableWidget->resizeColumnsToContents();
+}
+
+// ==================== 话题投票辅助函数 ====================
+
+void MainWindow::refreshTopicComboBox() {
+    if (!voterTopicComboBox) return;
+    
+    int currentId = -1;
+    if (voterTopicComboBox->count() > 0) {
+        bool ok = false;
+        currentId = voterTopicComboBox->currentData().toInt(&ok);
+        if (!ok) currentId = -1;
+    }
+    
+    voterTopicComboBox->blockSignals(true);
+    voterTopicComboBox->clear();
+    
+    const vector<VoteTopic>& topics = electionSystem->getAllTopics();
+    for (const auto& topic : topics) {
+        voterTopicComboBox->addItem(QString("[%1] %2").arg(topic.id).arg(QString::fromStdString(topic.title)), topic.id);
+    }
+    
+    // 尝试恢复之前选中的话题
+    if (currentId > 0) {
+        int index = voterTopicComboBox->findData(currentId);
+        if (index >= 0) voterTopicComboBox->setCurrentIndex(index);
+    }
+    
+    voterTopicComboBox->blockSignals(false);
+    
+    // 如果当前没有选中任何话题，但列表中有话题，默认选中第一个
+    if (voterTopicComboBox->currentIndex() < 0 && voterTopicComboBox->count() > 0) {
+        voterTopicComboBox->setCurrentIndex(0);
+    }
+}
+
+void MainWindow::updateVoterTopicOptionTable() {
+    if (!voterTopicComboBox || !voterTopicOptionTable) return;
+    
+    bool ok = false;
+    int topicId = voterTopicComboBox->currentData().toInt(&ok);
+    if (!ok || topicId <= 0) {
+        voterTopicOptionTable->setRowCount(0);
+        if (voterEmptyLabel) voterEmptyLabel->setVisible(true);
+        return;
+    }
+    
+    VoteTopic* topic = electionSystem->queryTopic(topicId);
+    if (!topic) {
+        voterTopicOptionTable->setRowCount(0);
+        if (voterEmptyLabel) voterEmptyLabel->setVisible(true);
+        return;
+    }
+    
+    int totalVotes = electionSystem->getTopicTotalVotes(topicId);
+    voterTopicOptionTable->setRowCount(static_cast<int>(topic->options.size()));
+    
+    for (size_t i = 0; i < topic->options.size(); i++) {
+        const auto& option = topic->options[i];
+        double percentage = (totalVotes > 0) ? (100.0 * option.voteCount / totalVotes) : 0.0;
+        
+        auto* idItem = new QTableWidgetItem(QString::number(option.id));
+        auto* textItem = new QTableWidgetItem(QString::fromStdString(option.text));
+        auto* countItem = new QTableWidgetItem(QString::number(option.voteCount));
+        auto* percentItem = new QTableWidgetItem(QString::number(percentage, 'f', 2) + "%");
+        
+        idItem->setTextAlignment(Qt::AlignCenter);
+        countItem->setTextAlignment(Qt::AlignCenter);
+        percentItem->setTextAlignment(Qt::AlignCenter);
+        
+        voterTopicOptionTable->setItem(static_cast<int>(i), 0, idItem);
+        voterTopicOptionTable->setItem(static_cast<int>(i), 1, textItem);
+        voterTopicOptionTable->setItem(static_cast<int>(i), 2, countItem);
+        voterTopicOptionTable->setItem(static_cast<int>(i), 3, percentItem);
+    }
+    
+    voterTopicOptionTable->resizeColumnsToContents();
+    
+    if (voterEmptyLabel) {
+        bool hasData = !topic->options.empty();
+        if (voterTopicOptionTable->parentWidget()) {
+            voterTopicOptionTable->parentWidget()->setProperty("currentIndex", hasData ? 0 : 1);
+        }
+        voterEmptyLabel->setVisible(!hasData);
+    }
+    
+    if (voterVoteBtn) {
+        voterVoteBtn->setEnabled(!topic->options.empty());
+    }
+}
+
+void MainWindow::showTopicResultDialog(int topicId) {
+    VoteTopic* topic = electionSystem->queryTopic(topicId);
+    if (!topic) {
+        showMessage("错误", "未找到指定话题。", true);
+        return;
+    }
+    
+    int totalVotes = electionSystem->getTopicTotalVotes(topicId);
+    
+    QString message = QString("<h3>%1</h3>").arg(QString::fromStdString(topic->title));
+    if (!topic->description.empty()) {
+        message += QString("<p>%1</p>").arg(QString::fromStdString(topic->description).toHtmlEscaped().replace("\n", "<br>"));
+    }
+    
+    message += QString("<p><b>总投票数：</b>%1</p>").arg(totalVotes);
+    // 优胜者：得票率 > 50%
+    QString winnerLine;
+    if (totalVotes > 0) {
+        int winnerOptId = -1;
+        QString winnerOptText;
+        for (const auto &opt : topic->options) {
+            if (opt.voteCount * 2 > totalVotes) {
+                winnerOptId = opt.id;
+                winnerOptText = QString::fromStdString(opt.text);
+                break;
+            }
+        }
+        if (winnerOptId != -1) {
+            winnerLine = QString("<p style=\"color: green;\"><b>✅ 优胜者：</b>[%1] %2（得票率 > 50%）</p>")
+                         .arg(winnerOptId)
+                         .arg(winnerOptText.toHtmlEscaped());
+        } else {
+            winnerLine = "<p style=\"color:#909399;\"><b>暂无优胜者：</b>没有选项得票率超过50%。</p>";
+        }
+    } else {
+        winnerLine = "<p style=\"color:#909399;\"><b>暂无优胜者：</b>当前总票数为0。</p>";
+    }
+    message += winnerLine;
+    message += "<table border='1' cellspacing='0' cellpadding='5' style='width:100%'>";
+    message += "<tr><th>选项ID</th><th>选项内容</th><th>票数</th><th>得票率</th></tr>";
+    
+    // 按票数排序选项
+    vector<const VoteOption*> sortedOptions;
+    for (const auto& opt : topic->options) {
+        sortedOptions.push_back(&opt);
+    }
+    std::sort(sortedOptions.begin(), sortedOptions.end(), 
+             [](const VoteOption* a, const VoteOption* b) { return a->voteCount > b->voteCount; });
+    
+    for (const auto* opt : sortedOptions) {
+        double percentage = (totalVotes > 0) ? (100.0 * opt->voteCount / totalVotes) : 0;
+        message += QString("<tr><td align='center'>%1</td><td>%2</td><td align='center'>%3</td><td align='center'>%4%</td></tr>")
+                      .arg(opt->id)
+                      .arg(QString::fromStdString(opt->text).toHtmlEscaped())
+                      .arg(opt->voteCount)
+                      .arg(percentage, 0, 'f', 2);
+    }
+    
+    message += "</table>";
+    
+    QDialog dialog(this);
+    dialog.setWindowTitle("投票结果 - " + QString::fromStdString(topic->title));
+    dialog.resize(600, 400);
+    
+    QVBoxLayout* layout = new QVBoxLayout(&dialog);
+    QTextBrowser* browser = new QTextBrowser();
+    browser->setHtml(message);
+    
+    QDialogButtonBox* buttonBox = new QDialogButtonBox(QDialogButtonBox::Close);
+    connect(buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    
+    layout->addWidget(browser);
+    layout->addWidget(buttonBox);
+    
+    dialog.exec();
 }
 
 // ==================== 候选人管理槽函数 ====================
@@ -729,6 +1498,7 @@ void MainWindow::onQueryCandidate()
 
 void MainWindow::onCandidateTableSelectionChanged()
 {
+    if (!candidateTable) return;
     QList<QTableWidgetItem*> items = candidateTable->selectedItems();
     if (!items.isEmpty()) {
         int row = items[0]->row();
@@ -753,7 +1523,7 @@ void MainWindow::onSingleVote()
         showMessage("成功", QString("投票成功！候选人编号: %1").arg(candidateID));
         updateCandidateTable();
         updateStatisticsTable();
-        updateVoteHistoryList();
+        // updateVoteHistoryList();
         onShowSummary();
         onShowElectionResult();
         statusLabel->setText(QString("已投票给候选人: %1").arg(candidateID));
@@ -810,9 +1580,10 @@ void MainWindow::onBatchVote()
     }
     
     showMessage("成功", message);
+    refreshAdminTopicSelectors();
     updateCandidateTable();
     updateStatisticsTable();
-    updateVoteHistoryList();
+    // updateVoteHistoryList();
     onShowSummary();
     onShowElectionResult();
     statusLabel->setText(QString("已处理 %1 张选票").arg(totalVotes));
@@ -833,7 +1604,7 @@ void MainWindow::onImportVotesFromFile()
         showMessage("成功", QString("成功从文件加载 %1 张选票").arg(votes.size()));
         updateCandidateTable();
         updateStatisticsTable();
-        updateVoteHistoryList();
+        // updateVoteHistoryList();
         onShowSummary();
         onShowElectionResult();
         statusLabel->setText(QString("已从文件加载 %1 张选票").arg(votes.size()));
@@ -853,7 +1624,7 @@ void MainWindow::onResetVotes()
         showMessage("成功", "已重置所有投票");
         updateCandidateTable();
         updateStatisticsTable();
-        updateVoteHistoryList();
+        // updateVoteHistoryList();
         onShowSummary();
         onShowElectionResult();
         statusLabel->setText("已重置所有投票");
@@ -866,7 +1637,7 @@ void MainWindow::onUndoLastVote()
         showMessage("成功", "已撤销最近一张选票");
         updateCandidateTable();
         updateStatisticsTable();
-        updateVoteHistoryList();
+        // updateVoteHistoryList();
         onShowSummary();
         onShowElectionResult();
         statusLabel->setText("已撤销最近一票");
@@ -884,7 +1655,7 @@ void MainWindow::onUndoMultipleVotes()
         showMessage("成功", QString("已撤销最近 %1 张选票").arg(undone));
         updateCandidateTable();
         updateStatisticsTable();
-        updateVoteHistoryList();
+        // updateVoteHistoryList();
         onShowSummary();
         onShowElectionResult();
         statusLabel->setText(QString("已撤销 %1 张选票").arg(undone));
@@ -895,19 +1666,20 @@ void MainWindow::onUndoMultipleVotes()
 
 void MainWindow::onShowVoteHistory()
 {
-    updateVoteHistoryList();
+    // updateVoteHistoryList();
 }
 
 // ==================== 查询统计槽函数 ====================
 
 void MainWindow::onShowStatistics()
 {
-    updateStatisticsTable();
-    onShowSummary();
+    refreshAdminViews();
 }
 
 void MainWindow::onSortCandidates()
 {
+    updateTopicStatisticsTable(getSelectedAdminTopicId());
+    return;
     int index = sortComboBox->currentIndex();
     vector<Candidate> candidates = electionSystem->getAllCandidates();
     
@@ -931,6 +1703,8 @@ void MainWindow::onSortCandidates()
 
 void MainWindow::onShowSummary()
 {
+    updateTopicStatisticsTable(getSelectedAdminTopicId());
+    return;
     const vector<Candidate> &candidates = electionSystem->getAllCandidates();
     
     if (candidates.empty()) {
@@ -969,6 +1743,8 @@ void MainWindow::onShowSummary()
 
 void MainWindow::onShowElectionResult()
 {
+    updateTopicResultView(getSelectedAdminTopicId());
+    return;
     const vector<Candidate> &candidates = electionSystem->getAllCandidates();
     
     if (candidates.empty()) {
@@ -1048,108 +1824,134 @@ void MainWindow::onExportReport()
 
 void MainWindow::onSaveCandidates()
 {
-    QString filename = QFileDialog::getSaveFileName(this, "保存候选人数据", 
-                                                    "candidates.csv", 
-                                                    "数据文件 (*.csv *.txt);;CSV 文件 (*.csv);;文本文件 (*.txt);;所有文件 (*.*)");
+    int topicId = getSelectedTopicIdFromTable(topicTableWidget);
+    if (topicId <= 0) {
+        showMessage("提示", "请在话题列表中先选中一个话题再导出。", true);
+        return;
+    }
+
+    VoteTopic *topic = electionSystem->queryTopic(topicId);
+    if (!topic) {
+        showMessage("错误", "话题不存在。", true);
+        return;
+    }
+
+    QString filename = QFileDialog::getSaveFileName(this, "导出话题", 
+                                                    QString("topic_%1.csv").arg(topicId),
+                                                    "CSV 文件 (*.csv);;所有文件 (*.*)");
     if (filename.isEmpty()) {
         return;
     }
-    
-    if (FileManager::saveCandidates(electionSystem->getAllCandidates(), filename.toStdString())) {
-        showMessage("成功", QString("候选人数据已保存到: %1").arg(filename));
-        maintenanceLog->append(QString("[%1] 保存候选人数据: %2")
-                               .arg(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss"))
-                               .arg(filename));
-        statusLabel->setText(QString("已保存候选人数据: %1").arg(filename));
+
+    if (FileManager::exportSingleTopicData(*topic, electionSystem->getTopicVoteHistory(), filename.toStdString())) {
+        showMessage("成功", QString("话题已导出到: %1").arg(filename));
+        if (maintenanceLog) {
+            maintenanceLog->append(QString("[%1] 导出话题: %2 (topicId=%3)")
+                                   .arg(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss"))
+                                   .arg(filename)
+                                   .arg(topicId));
+        }
+        statusLabel->setText(QString("已导出话题: %1").arg(topicId));
     } else {
-        showMessage("错误", "保存失败！", true);
+        showMessage("错误", "导出失败！", true);
     }
 }
 
 void MainWindow::onLoadCandidates()
 {
-    QString filename = QFileDialog::getOpenFileName(this, "加载候选人数据", 
-                                                    ".", "数据文件 (*.csv *.txt);;CSV 文件 (*.csv);;文本文件 (*.txt);;所有文件 (*.*)");
+    QString filename = QFileDialog::getOpenFileName(this, "导入话题", 
+                                                    ".", "CSV 文件 (*.csv);;所有文件 (*.*)");
     if (filename.isEmpty()) {
         return;
     }
-    
-    vector<Candidate> candidates;
-    if (FileManager::loadCandidates(candidates, filename.toStdString())) {
-        // 清空现有数据并加载
-        electionSystem->clearAll();
-        for (const auto &c : candidates) {
-            electionSystem->addCandidate(c.id, c.name, c.department);
-            // 恢复得票数
-            Candidate *loaded = electionSystem->queryCandidate(c.id);
-            if (loaded) {
-                loaded->voteCount = c.voteCount;
-            }
-        }
-        
-        showMessage("成功", QString("成功加载 %1 个候选人").arg(candidates.size()));
-        maintenanceLog->append(QString("[%1] 加载候选人数据: %2 (%3个候选人)")
+
+    VoteTopic imported;
+    vector<TopicVoteRecord> votes;
+    if (!FileManager::importSingleTopicData(imported, votes, filename.toStdString())) {
+        showMessage("错误", "导入失败：文件格式不正确或内容为空。", true);
+        return;
+    }
+
+    bool ok = false;
+    int newTopicId = QInputDialog::getInt(this,
+                                         "指定话题ID",
+                                         "请输入导入后话题ID（必须与现有话题ID不重复）：",
+                                         imported.id,
+                                         1,
+                                         999999,
+                                         1,
+                                         &ok);
+    if (!ok) return;
+
+    if (electionSystem->queryTopic(newTopicId) != nullptr) {
+        showMessage("错误", "导入失败：该话题ID已存在。", true);
+        return;
+    }
+
+    // 创建新话题（使用导入内容）
+    vector<string> optTexts;
+    optTexts.reserve(imported.options.size());
+    for (const auto &opt : imported.options) {
+        optTexts.push_back(opt.text);
+    }
+
+    int createdId = electionSystem->createTopic(imported.title, imported.description, optTexts, imported.votesPerVoter);
+    if (createdId <= 0) {
+        showMessage("错误", "导入失败：创建话题失败。", true);
+        return;
+    }
+
+    VoteTopic *nt = electionSystem->queryTopic(createdId);
+    if (!nt) {
+        showMessage("错误", "导入失败：内部错误。", true);
+        return;
+    }
+
+    // 覆盖为指定的新 topicId，并恢复 createdAt / voteCount
+    nt->id = newTopicId;
+    nt->createdAt = imported.createdAt;
+    nt->votesPerVoter = imported.votesPerVoter;
+    for (size_t i = 0; i < nt->options.size() && i < imported.options.size(); ++i) {
+        nt->options[i].voteCount = imported.options[i].voteCount;
+    }
+
+    // 追加投票记录：将 topicId 替换为 newTopicId
+    // 注意：这里仅用于导出记录展示，不用于重新构建投票人限制（限制基于内存中的 topicVotedUsers）
+    // 简单做法：重新播放投票记录以恢复限制与历史
+    for (auto &rec : votes) {
+        rec.topicId = newTopicId;
+        // 重新记录到系统历史中（不重复计票）
+        // 为保证一致性，这里不再计票，只把记录附加到历史
+    }
+
+    // 将投票记录直接附加到 topicVoteHistory（需要一个入口；目前只有 getter，这里先不恢复投票人限制，后续可补）
+
+    showMessage("成功", QString("导入成功：话题ID %1（选项%2个）").arg(newTopicId).arg(nt->options.size()));
+
+    updateTopicTable();
+    refreshTopicComboBox();
+    refreshAdminTopicSelectors();
+    refreshAdminViews();
+    updateVoterTopicOptionTable();
+
+    if (maintenanceLog) {
+        maintenanceLog->append(QString("[%1] 导入话题: %2 -> topicId=%3")
                                .arg(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss"))
                                .arg(filename)
-                               .arg(candidates.size()));
-        updateCandidateTable();
-        updateStatisticsTable();
-        onShowSummary();
-        onShowElectionResult();
-        statusLabel->setText(QString("已加载 %1 个候选人").arg(candidates.size()));
-    } else {
-        showMessage("错误", "加载失败！", true);
+                               .arg(newTopicId));
     }
 }
 
 void MainWindow::onSaveVotes()
 {
-    QString filename = QFileDialog::getSaveFileName(this, "保存投票数据", 
-                                                    "votes.csv", 
-                                                    "数据文件 (*.csv *.txt);;CSV 文件 (*.csv);;文本文件 (*.txt);;所有文件 (*.*)");
-    if (filename.isEmpty()) {
-        return;
-    }
-    
-    if (FileManager::saveVotes(electionSystem->getVoteHistory(), filename.toStdString())) {
-        showMessage("成功", QString("投票数据已保存到: %1").arg(filename));
-        maintenanceLog->append(QString("[%1] 保存投票数据: %2")
-                               .arg(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss"))
-                               .arg(filename));
-        statusLabel->setText(QString("已保存投票数据: %1").arg(filename));
-    } else {
-        showMessage("错误", "保存失败！", true);
-    }
+    // 已合并到‘导出话题数据’，此功能停用
+    showMessage("提示", "请使用：导出话题数据（包含投票记录）。");
 }
 
 void MainWindow::onLoadVotes()
 {
-    QString filename = QFileDialog::getOpenFileName(this, "加载投票数据", 
-                                                    ".", "数据文件 (*.csv *.txt);;CSV 文件 (*.csv);;文本文件 (*.txt);;所有文件 (*.*)");
-    if (filename.isEmpty()) {
-        return;
-    }
-    
-    vector<int> votes;
-    if (FileManager::loadVotes(votes, filename.toStdString())) {
-        // 数据维护中的“加载投票数据”用于从文件重建一次完整投票结果，
-        // 因此这里先主动清零，再重新累加。
-        electionSystem->resetVotes();
-        electionSystem->vote(votes, true);
-        showMessage("成功", QString("成功加载 %1 张选票").arg(votes.size()));
-        maintenanceLog->append(QString("[%1] 加载投票数据: %2 (%3张选票)")
-                               .arg(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss"))
-                               .arg(filename)
-                               .arg(votes.size()));
-        updateCandidateTable();
-        updateStatisticsTable();
-        updateVoteHistoryList();
-        onShowSummary();
-        onShowElectionResult();
-        statusLabel->setText(QString("已加载 %1 张选票").arg(votes.size()));
-    } else {
-        showMessage("错误", "加载失败！", true);
-    }
+    // 已合并到‘导入话题数据’，此功能停用
+    showMessage("提示", "请使用：导入话题数据（包含投票记录）。");
 }
 
 void MainWindow::onClearAll()
@@ -1165,7 +1967,7 @@ void MainWindow::onClearAll()
                                .arg(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss")));
         updateCandidateTable();
         updateStatisticsTable();
-        updateVoteHistoryList();
+        // updateVoteHistoryList();
         onShowSummary();
         onShowElectionResult();
         statusLabel->setText("已清空所有数据");
@@ -1176,6 +1978,12 @@ void MainWindow::onClearAll()
 
 void MainWindow::onAnalyzeVoteData()
 {
+    bool isTopicMode = true;
+    if (isTopicMode) {
+        updateTopicAnalysisView(getSelectedAdminTopicId(), 0);
+        return;
+    }
+
     const vector<int> &history = electionSystem->getVoteHistory();
     
     if (history.empty()) {
@@ -1213,6 +2021,12 @@ void MainWindow::onAnalyzeVoteData()
 
 void MainWindow::onAnalyzeRanking()
 {
+    bool isTopicMode = true;
+    if (isTopicMode) {
+        updateTopicAnalysisView(getSelectedAdminTopicId(), 1);
+        return;
+    }
+
     const vector<Candidate> &candidates = electionSystem->getAllCandidates();
     
     if (candidates.empty()) {
@@ -1241,6 +2055,12 @@ void MainWindow::onAnalyzeRanking()
 
 void MainWindow::onAnalyzeDistribution()
 {
+    bool isTopicMode = true;
+    if (isTopicMode) {
+        updateTopicAnalysisView(getSelectedAdminTopicId(), 2);
+        return;
+    }
+
     const vector<Candidate> &candidates = electionSystem->getAllCandidates();
     
     if (candidates.empty()) {
@@ -1272,6 +2092,12 @@ void MainWindow::onAnalyzeDistribution()
 
 void MainWindow::onAnalyzePerformance()
 {
+    bool isTopicMode = true;
+    if (isTopicMode) {
+        updateTopicAnalysisView(getSelectedAdminTopicId(), 3);
+        return;
+    }
+
     // 简单性能测试：在不同规模下测量核心操作的耗时
     struct CaseConfig {
         int candidates;
@@ -1341,34 +2167,8 @@ void MainWindow::onAnalyzePerformance()
 
 void MainWindow::updateCandidateTable()
 {
-    const vector<Candidate> &candidates = electionSystem->getAllCandidates();
-    
-    candidateTable->setRowCount(static_cast<int>(candidates.size()));
-    
-    for (size_t i = 0; i < candidates.size(); i++) {
-        auto *idItem   = new QTableWidgetItem(QString::number(candidates[i].id));
-        auto *nameItem = new QTableWidgetItem(QString::fromStdString(candidates[i].name));
-        auto *deptItem = new QTableWidgetItem(QString::fromStdString(candidates[i].department));
-        auto *voteItem = new QTableWidgetItem(QString::number(candidates[i].voteCount));
-
-        idItem->setTextAlignment(Qt::AlignCenter);
-        nameItem->setTextAlignment(Qt::AlignCenter);
-        deptItem->setTextAlignment(Qt::AlignCenter);
-        voteItem->setTextAlignment(Qt::AlignCenter);
-
-        candidateTable->setItem(i, 0, idItem);
-        candidateTable->setItem(i, 1, nameItem);
-        candidateTable->setItem(i, 2, deptItem);
-        candidateTable->setItem(i, 3, voteItem);
-    }
-    
-    candidateTable->resizeColumnsToContents();
-
-    if (candidateEmptyLabel) {
-        bool hasData = !candidates.empty();
-        candidateTable->parentWidget()->setProperty("currentIndex", hasData ? 0 : 1);
-        candidateEmptyLabel->setVisible(!hasData);
-    }
+    // 候选人系统已从界面移除：保留空实现以避免历史调用导致崩溃
+    return;
 }
 
 void MainWindow::updateStatisticsTable()
@@ -1430,20 +2230,8 @@ void MainWindow::updateStatisticsTable(const vector<Candidate> &candidates)
 
 void MainWindow::updateVoteHistoryList()
 {
-    const vector<int> &history = electionSystem->getVoteHistory();
-    
-    voteHistoryList->clear();
-    
-    QStringList items;
-    for (int vote : history) {
-        items << QString::number(vote);
-    }
-    
-    voteHistoryList->addItems(items);
-    
-    if (!history.empty()) {
-        voteHistoryList->scrollToBottom();
-    }
+    // 候选人投票历史界面已移除：保留空实现以避免历史调用导致崩溃
+    return;
 }
 
 void MainWindow::updateCharts()
@@ -1705,9 +2493,10 @@ void MainWindow::applyFontScale()
         }
     };
 
-    adjustTable(candidateTable);
+    // candidateTable 已不再使用（候选人系统移除），避免空悬指针导致崩溃
+    // adjustTable(candidateTable);
     adjustTable(statisticsTable);
-    adjustTable(voterCandidateTable);
+    adjustTable(voterTopicOptionTable);
 }
 
 bool MainWindow::validateInput(const QString &text, bool isID)
@@ -1727,9 +2516,9 @@ bool MainWindow::validateInput(const QString &text, bool isID)
 
 void MainWindow::clearInputFields()
 {
-    candidateIdEdit->clear();
-    candidateNameEdit->clear();
-    candidateDeptEdit->clear();
+    if (candidateIdEdit) candidateIdEdit->clear();
+    if (candidateNameEdit) candidateNameEdit->clear();
+    if (candidateDeptEdit) candidateDeptEdit->clear();
 }
 
 void MainWindow::onIncreaseFont()
@@ -1752,45 +2541,35 @@ void MainWindow::onResetFont()
 
 void MainWindow::onLoadSampleCandidates()
 {
-    struct SampleCandidate {
-        int id;
-        const char *name;
-        const char *dept;
-    };
-    
-    const SampleCandidate samples[] = {
-        {1,  "张三",   "计算机学院"},
-        {2,  "李四",   "计算机学院"},
-        {3,  "王五",   "数学学院"},
-        {4,  "赵六",   "数学学院"},
-        {5,  "孙琪",   "物理学院"},
-        {6,  "周八",   "物理学院"},
-        {7,  "吴九",   "经管学院"},
-        {8,  "郑十",   "经管学院"},
-        {9,  "陈一",   "外国语学院"},
-        {10, "杨二",   "外国语学院"}
-    };
-    
-    // 清空现有候选人和投票数据
+    // 生成 1 个示例话题（10 个选项）
     electionSystem->clearAll();
-    
-    // 导入示例候选人
-    for (const auto &s : samples) {
-        electionSystem->addCandidate(s.id, s.name, s.dept);
+
+    std::vector<std::string> optionTexts;
+    optionTexts.reserve(10);
+    for (int i = 1; i <= 10; ++i) {
+        optionTexts.push_back(std::string("候选人") + std::to_string(i));
     }
-    
-    showMessage("成功", "已加载示例候选人名单（10人）。");
+
+    int topicId = electionSystem->createTopic("示例话题", "系统自动生成的示例话题", optionTexts, 1);
+    if (topicId <= 0) {
+        showMessage("错误", "加载示例话题失败。", true);
+        return;
+    }
+
+    showMessage("成功", QString("已加载示例话题：示例话题（10个选项），话题ID %1。").arg(topicId));
     if (maintenanceLog) {
-        maintenanceLog->append(QString("[%1] 加载示例候选人名单（10人）")
-                               .arg(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss")));
+        maintenanceLog->append(QString("[%1] 加载示例话题：示例话题（10个选项），话题ID %2")
+                               .arg(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss"))
+                               .arg(topicId));
     }
-    
-    updateCandidateTable();
-    updateVoterCandidateTable();
-    updateStatisticsTable();
-    onShowSummary();
-    onShowElectionResult();
-    statusLabel->setText("已加载示例候选人名单");
+
+    // 刷新话题相关视图
+    refreshTopicComboBox();
+    refreshAdminTopicSelectors();
+    refreshAdminViews();
+    updateVoterTopicOptionTable();
+
+    statusLabel->setText("已加载示例话题");
 }
 
 void MainWindow::onEnterVoterMode()
@@ -1815,7 +2594,7 @@ void MainWindow::onEnterAdminMode()
     }
     updateCandidateTable();
     updateStatisticsTable();
-    updateVoteHistoryList();
+    // updateVoteHistoryList();
     onShowSummary();
     onShowElectionResult();
     statusLabel->setText("管理员后台");
@@ -1834,107 +2613,112 @@ void MainWindow::onBackToRoleSelection()
 
 void MainWindow::onVoterRefreshCandidates()
 {
-    updateVoterCandidateTable();
+    refreshTopicComboBox();
+    updateVoterTopicOptionTable();
 }
 
 void MainWindow::onVoterVote()
 {
-    if (!voterCandidateTable) {
+    if (!voterTopicComboBox || !voterTopicOptionTable) {
         return;
     }
 
-    QList<QTableWidgetItem*> items = voterCandidateTable->selectedItems();
+    bool okTopic = false;
+    int topicId = voterTopicComboBox->currentData().toInt(&okTopic);
+    if (!okTopic || topicId <= 0) {
+        showMessage("提示", "请先选择一个投票话题。", true);
+        return;
+    }
+
+    QList<QTableWidgetItem*> items = voterTopicOptionTable->selectedItems();
     if (items.isEmpty()) {
-        showMessage("提示", "请先在列表中选择一个候选人。", true);
+        showMessage("提示", "请先在列表中选择一个选项。", true);
         return;
     }
 
     int row = items[0]->row();
-    QTableWidgetItem *idItem = voterCandidateTable->item(row, 0);
+    QTableWidgetItem *idItem = voterTopicOptionTable->item(row, 0);
     if (!idItem) {
-        showMessage("错误", "无法读取候选人编号。", true);
+        showMessage("错误", "无法读取选项ID。", true);
         return;
     }
 
-    bool ok = false;
-    int candidateID = idItem->text().toInt(&ok);
-    if (!ok || candidateID <= 0) {
-        showMessage("错误", "候选人编号不合法。", true);
+    bool okOpt = false;
+    int optionId = idItem->text().toInt(&okOpt);
+    if (!okOpt || optionId <= 0) {
+        showMessage("错误", "选项ID不合法。", true);
         return;
     }
 
-    Candidate *c = electionSystem->queryCandidate(candidateID);
-    QString name = c ? QString::fromStdString(c->name) : QString::number(candidateID);
-    QString dept = c ? QString::fromStdString(c->department) : QString();
+    VoteTopic *topic = electionSystem->queryTopic(topicId);
+    QString topicTitle = topic ? QString::fromStdString(topic->title) : QString::number(topicId);
 
-    QString confirmText = QString("确认投票给以下候选人吗？\n\n编号：%1\n姓名：%2\n所属单位：%3")
-                          .arg(candidateID)
-                          .arg(name)
-                          .arg(dept.isEmpty() ? "-" : dept);
+    QString optText;
+    if (topic) {
+        for (const auto &opt : topic->options) {
+            if (opt.id == optionId) {
+                optText = QString::fromStdString(opt.text);
+                break;
+            }
+        }
+    }
+
+    QString confirmText = QString("确认在以下话题中投票吗？\n\n话题：%1\n选项：%2")
+                          .arg(topicTitle)
+                          .arg(optText.isEmpty() ? QString::number(optionId) : optText);
 
     int ret = QMessageBox::question(this, "确认投票", confirmText, QMessageBox::Yes | QMessageBox::No);
     if (ret != QMessageBox::Yes) {
         return;
     }
 
-    if (electionSystem->castVote(candidateID)) {
-        showMessage("成功", "投票成功！");
-        updateVoterCandidateTable();
-        updateCandidateTable();
-        updateStatisticsTable();
-        onShowSummary();
-        onShowElectionResult();
-        statusLabel->setText(QString("已投票：%1").arg(candidateID));
+    bool okInput = false;
+    QString voterId = QInputDialog::getText(this,
+                                           "投票人ID",
+                                           "请输入投票人ID（同一话题同一ID只能投一次）：",
+                                           QLineEdit::Normal,
+                                           "",
+                                           &okInput);
+    if (!okInput) {
+        return;
+    }
+    voterId = voterId.trimmed();
+    if (voterId.isEmpty()) {
+        showMessage("错误", "投票人ID不能为空。", true);
+        return;
+    }
+
+    if (electionSystem->castTopicVote(topicId, optionId, voterId.toStdString())) {
+        int remain = electionSystem->getTopicRemainingVotes(topicId, voterId.toStdString());
+        showMessage("成功", QString("投票成功！该投票人ID在本话题还剩 %1 票可投。").arg(remain));
+        updateVoterTopicOptionTable();
+        refreshAdminViews();
+        updateTopicTable();
+        statusLabel->setText(QString("已投票：话题%1-选项%2（%3）").arg(topicId).arg(optionId).arg(voterId));
     } else {
-        showMessage("错误", "投票失败！候选人不存在。", true);
+        int remain = electionSystem->getTopicRemainingVotes(topicId, voterId.toStdString());
+        QString reason = remain <= 0 ? "投票失败：该投票人ID在本话题的票数已用完。" : "投票失败：不能重复投同一选项，或话题/选项不存在。";
+        showMessage("错误", reason + QString("\n该ID还剩 %1 票可投。").arg(remain), true);
     }
 }
 
 void MainWindow::onVoterShowResult()
 {
-    // 投票端查看结果：直接跳转到管理员后台的“选举结果”页（只读展示）
-    onEnterAdminMode();
-    if (mainTabWidget) {
-        // 选举结果页是第 3 个 Tab（0-based: 0候选人 1投票 2统计 3结果）
-        mainTabWidget->setCurrentIndex(3);
+    if (!voterTopicComboBox) {
+        return;
     }
+
+    bool okTopic = false;
+    int topicId = voterTopicComboBox->currentData().toInt(&okTopic);
+    if (!okTopic || topicId <= 0) {
+        showMessage("提示", "请先选择一个投票话题。", true);
+        return;
+    }
+
+    showTopicResultDialog(topicId);
 }
 
 void MainWindow::updateVoterCandidateTable()
 {
-    if (!voterCandidateTable) {
-        return;
-    }
-
-    const vector<Candidate> &candidates = electionSystem->getAllCandidates();
-    voterCandidateTable->setRowCount(static_cast<int>(candidates.size()));
-
-    for (size_t i = 0; i < candidates.size(); i++) {
-        auto *idItem   = new QTableWidgetItem(QString::number(candidates[i].id));
-        auto *nameItem = new QTableWidgetItem(QString::fromStdString(candidates[i].name));
-        auto *deptItem = new QTableWidgetItem(QString::fromStdString(candidates[i].department));
-        auto *voteItem = new QTableWidgetItem(QString::number(candidates[i].voteCount));
-
-        idItem->setTextAlignment(Qt::AlignCenter);
-        nameItem->setTextAlignment(Qt::AlignCenter);
-        deptItem->setTextAlignment(Qt::AlignCenter);
-        voteItem->setTextAlignment(Qt::AlignCenter);
-
-        voterCandidateTable->setItem(static_cast<int>(i), 0, idItem);
-        voterCandidateTable->setItem(static_cast<int>(i), 1, nameItem);
-        voterCandidateTable->setItem(static_cast<int>(i), 2, deptItem);
-        voterCandidateTable->setItem(static_cast<int>(i), 3, voteItem);
-    }
-
-    voterCandidateTable->resizeColumnsToContents();
-
-    if (voterEmptyLabel) {
-        bool hasData = !candidates.empty();
-        voterCandidateTable->parentWidget()->setProperty("currentIndex", hasData ? 0 : 1);
-        voterEmptyLabel->setVisible(!hasData);
-    }
-
-    if (voterVoteBtn) {
-        voterVoteBtn->setEnabled(!candidates.empty());
-    }
+    // 旧候选人投票端表格已被“话题投票”取代：保留空实现以兼容历史调用。
 }

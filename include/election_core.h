@@ -4,6 +4,8 @@
 #include <vector>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
+#include <map>
 #include <algorithm>
 #include <fstream>
 #include <sstream>
@@ -17,6 +19,36 @@
 using namespace std;
 
 // ==================== 数据结构定义 ====================
+
+struct VoteOption {
+    int id;
+    string text;
+    int voteCount;
+
+    VoteOption() : id(0), text(""), voteCount(0) {}
+    VoteOption(int i, const string &t) : id(i), text(t), voteCount(0) {}
+};
+
+struct VoteTopic {
+    int id;
+    string title;
+    string description;
+    vector<VoteOption> options;
+    time_t createdAt;
+    int votesPerVoter;
+
+    VoteTopic() : id(0), title(""), description(""), createdAt(0), votesPerVoter(1) {}
+};
+
+struct TopicVoteRecord {
+    int topicId;
+    string voterId;
+    int optionId;
+    time_t votedAt;
+
+    TopicVoteRecord() : topicId(0), voterId(""), optionId(0), votedAt(0) {}
+    TopicVoteRecord(int t, const string &v, int o, time_t ts) : topicId(t), voterId(v), optionId(o), votedAt(ts) {}
+};
 
 /**
  * 候选人数据结构
@@ -123,6 +155,29 @@ public:
  */
 class FileManager {
 public:
+    static bool saveTopics(const vector<VoteTopic> &topics,
+                           const string &filename = "topics.csv");
+
+    static bool loadTopics(vector<VoteTopic> &topics,
+                           const string &filename = "topics.csv");
+
+    static bool exportTopicReport(const VoteTopic &topic,
+                                 const string &filename = "topic_report.txt");
+
+    // 导出/导入：话题 + 选项 + 投票记录（单文件CSV，包含分段表头）
+    static bool exportTopicsData(const vector<VoteTopic> &topics,
+                                const vector<TopicVoteRecord> &voteHistory,
+                                const string &filename = "topics_data.csv");
+    static bool importTopicsData(vector<VoteTopic> &topics,
+                                vector<TopicVoteRecord> &voteHistory,
+                                const string &filename = "topics_data.csv");
+
+    static bool exportSingleTopicData(const VoteTopic &topic,
+                                     const vector<TopicVoteRecord> &voteHistory,
+                                     const string &filename = "topic_data.csv");
+    static bool importSingleTopicData(VoteTopic &topic,
+                                     vector<TopicVoteRecord> &voteHistory,
+                                     const string &filename = "topic_data.csv");
     /**
      * 保存候选人数据到文件
      * @param candidates 候选人列表
@@ -344,7 +399,25 @@ private:
     vector<Candidate> candidates;           // 候选人列表（使用STL vector）
     unordered_map<int, int> idToIndex;      // ID到索引的映射（使用STL unordered_map）
     vector<int> voteHistory;                // 投票历史记录（使用STL vector）
-    
+
+    vector<VoteTopic> topics;
+    unordered_map<int, int> topicIdToIndex;
+
+    // topicId -> voterId -> set<optionId> (已投的选项ID集合)，用于支持“每人可投N票且不能重复投同一选项”
+    unordered_map<int, unordered_map<string, unordered_set<int>>> topicVotedUsers;
+
+    int nextTopicId;
+
+    // 话题投票历史（用于管理员撤销最近一次前端投票）
+    vector<TopicVoteRecord> topicVoteHistory;
+
+    void updateTopicIndexMap() {
+        topicIdToIndex.clear();
+        for (size_t i = 0; i < topics.size(); i++) {
+            topicIdToIndex[topics[i].id] = i;
+        }
+    }
+
     /**
      * 更新ID到索引的映射
      */
@@ -375,6 +448,11 @@ public:
         candidates.clear();
         idToIndex.clear();
         voteHistory.clear();
+        topics.clear();
+        topicIdToIndex.clear();
+        topicVotedUsers.clear();
+        topicVoteHistory.clear();
+        nextTopicId = 1;
     }
     
     /**
@@ -473,6 +551,11 @@ public:
         candidates.clear();
         idToIndex.clear();
         voteHistory.clear();
+        topics.clear();
+        topicIdToIndex.clear();
+        topicVotedUsers.clear();
+        topicVoteHistory.clear();
+        nextTopicId = 1;
     }
     
     /**
@@ -484,6 +567,21 @@ public:
         }
         voteHistory.clear();
     }
+
+    int createTopic(const string &title, const string &description, const vector<string> &optionTexts, int votesPerVoter = 1);
+    bool deleteTopic(int topicId);
+    VoteTopic* queryTopic(int topicId);
+    const vector<VoteTopic>& getAllTopics() const {
+        return topics;
+    }
+
+    bool castTopicVote(int topicId, int optionId);
+    // 带投票人ID的投票，确保每个投票人在同一话题仅能投一次
+    bool castTopicVote(int topicId, int optionId, const string &voterId);
+    int getTopicRemainingVotes(int topicId, const string &voterId) const;
+    int getTopicTotalVotes(int topicId) const;
+    bool undoLastTopicVote(TopicVoteRecord *undone = nullptr);
+    const vector<TopicVoteRecord>& getTopicVoteHistory() const { return topicVoteHistory; }
 };
 
 #endif // ELECTION_CORE_H

@@ -22,6 +22,7 @@
 #include <QHeaderView>
 #include <QGroupBox>
 #include <QComboBox>
+#include <QPlainTextEdit>
 #include <QTabWidget>
 #include <QStackedWidget>
 #include <QSplitter>
@@ -117,7 +118,8 @@ private slots:
     
     // 表格选择变化
     void onCandidateTableSelectionChanged();
-    
+
+
     // 更新图表
     void updateCharts();
 
@@ -140,6 +142,7 @@ private:
     void createElectionResultWidget();
     void createDataMaintenanceWidget();
     void createAdvancedFeaturesWidget();
+    void createTopicManagementWidget();
     
     // 辅助函数
     void updateCandidateTable();
@@ -153,7 +156,19 @@ private:
     void applyFontScale();
 
     void updateVoterCandidateTable();
-    
+
+    void refreshAdminTopicSelectors();
+    int getSelectedAdminTopicId() const;
+    void refreshAdminViews();
+    void updateTopicStatisticsTable(int topicId);
+    void updateTopicResultView(int topicId);
+    void updateTopicAnalysisView(int topicId, int actionIndex);
+    // 投票话题（新功能）
+    void refreshTopicComboBox();
+    void updateVoterTopicOptionTable();
+    void showTopicResultDialog(int topicId);
+    void updateTopicTable();
+
     // 核心系统
     ElectionSystem *electionSystem;
     
@@ -162,6 +177,9 @@ private:
     QWidget *roleSelectionWidget;
     QWidget *voterWidget;
     QWidget *adminWidget;
+
+    // 话题管理表格（用于实时刷新）
+    QTableWidget *topicTableWidget;
 
     // 管理端组件（原有Tab容器）
     QTabWidget *mainTabWidget;
@@ -182,7 +200,8 @@ private:
     QPushButton *undoMultipleVotesBtn;
     
     // 投票端界面
-    QTableWidget *voterCandidateTable;
+    QComboBox *voterTopicComboBox;
+    QTableWidget *voterTopicOptionTable;
     QLabel *voterEmptyLabel;
     QPushButton *voterVoteBtn;
     QPushButton *voterRefreshBtn;
@@ -198,6 +217,9 @@ private:
     QPushButton *resetVotesBtn;
     QListWidget *voteHistoryList;
     
+    // 统计/结果/分析：模式切换（候选人/话题）
+    QComboBox *adminModeComboBox;
+    QComboBox *adminTopicComboBox;
     // 统计界面
     QWidget *statisticsWidget;
     QTableWidget *statisticsTable;
